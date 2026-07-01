@@ -49,6 +49,10 @@ jobs:
         shell: pwsh
         run: |
           python .github\scripts\build_hex.py
+        env:
+          # baked into every variant's FW_BUILD_ID - matches the "fw-build-N" release tag
+          # number below exactly, so the control panel can compare the two directly.
+          FW_BUILD_ID: ${{ github.run_number }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

@@ -271,6 +271,12 @@ uint8_t LC_scaling; // milos, load cell scaling factor (affects brake pressure, 
 
 #define FIRMWARE_VERSION         0xFB // dustin's rig, bumped from 0xFA - forces a fresh EEPROM defaults load on first boot (new PARAM_ADDR_AXIS_INVERT/DISABLE/NTC_THRESH fields, and clears out any EEPROM corruption from the pre-fix 'W' command SetParam size-mismatch bug)
 
+// dustin's rig, added - CI overwrites this with the GitHub Actions run number before compiling
+// each release (matches the numeric suffix of the "fw-build-N" release tag exactly), so the
+// control panel can tell "is my board on the latest release" with a single integer comparison
+// instead of guessing from feature letters. Local/manual builds keep the 0 placeholder.
+#define FW_BUILD_ID              0
+
 #define GetParam(m_offset,m_data)	getParam((m_offset),(u8*)&(m_data),sizeof(m_data))
 #define SetParam(m_offset,m_data)	setParam((m_offset),(u8*)&(m_data),sizeof(m_data))
 

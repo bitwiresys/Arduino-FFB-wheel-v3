@@ -133,6 +133,9 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
 #endif
         CONFIG_SERIAL.print("\r\n");
         break;
+      case 'X': // dustin's rig, added - CI-injected build number (see FW_BUILD_ID in Config.h), for the control panel to compare against the latest GitHub release
+        CONFIG_SERIAL.println(FW_BUILD_ID, DEC);
+        break;
       case 'S':
         CONFIG_SERIAL.println(brWheelFFB.state, DEC);
         break;

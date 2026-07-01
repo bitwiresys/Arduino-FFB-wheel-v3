@@ -23,6 +23,10 @@ VARIANTS_DIR = ROOT / ".github" / "variants"
 DIST_DIR = ROOT / "dist"
 FW_VERSION = os.environ.get("FW_VERSION", "v250")
 ZIP_PATH = Path(os.environ.get("ZIP_PATH", "build.zip"))
+# CI sets this to the GitHub Actions run number (same number used in the "fw-build-N" release
+# tag), baked into every compiled variant so the control panel can compare its connected
+# board's FW_BUILD_ID against the latest release with a single integer comparison.
+FW_BUILD_ID = os.environ.get("FW_BUILD_ID", "0")
 
 LIB_DIR = Path(os.environ.get("ARDUINO_LIB_DIR", Path.home() / "Arduino" / "libraries"))
 
@@ -74,6 +78,23 @@ def set_define(lines: list[str], name: str, enabled: bool) -> list[str]:
     return updated
 
 
+def set_define_value(lines: list[str], name: str, value: str) -> list[str]:
+    pattern = re.compile(rf"^(\s*)#\s*define\s+{re.escape(name)}\s+\S+(.*)$")
+    found = False
+    updated = []
+    for line in lines:
+        match = pattern.match(line)
+        if match:
+            indent, rest = match.group(1), match.group(2)
+            updated.append(f"{indent}#define {name}              {value}{rest}\n")
+            found = True
+        else:
+            updated.append(line)
+    if not found:
+        raise RuntimeError(f"Define not found in Config.h: {name}")
+    return updated
+
+
 def apply_options(base_config: list[str], letters: str, promicro: bool) -> list[str]:
     letter_set = set(letters)
 
@@ -93,6 +114,7 @@ def apply_options(base_config: list[str], letters: str, promicro: bool) -> list[
     updated = set_define(updated, "USE_EEPROM", use_eeprom)
     updated = set_define(updated, "USE_PROMICRO", promicro)
     updated = set_define(updated, "USE_QUADRATURE_ENCODER", use_quadrature)
+    updated = set_define_value(updated, "FW_BUILD_ID", FW_BUILD_ID)
 
     return updated
 
@@ -187,6 +209,7 @@ def main() -> None:
 
     manifest = {
         "firmware_version": FW_VERSION,
+        "build_id": FW_BUILD_ID,
         "variants": leo_entries + pro_entries,
     }
     (DIST_DIR / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
