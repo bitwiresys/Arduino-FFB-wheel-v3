@@ -122,6 +122,12 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
 #ifndef USE_EEPROM
         CONFIG_SERIAL.print("p");
 #endif
+#ifdef USE_MOTOR_NTC
+        CONFIG_SERIAL.print("o"); // dustin's rig, added - was missing from the V reply, GUI firmware-update matching needs every active letter reported
+#endif
+#ifdef USE_AXIS_TWEAKS
+        CONFIG_SERIAL.print("v"); // dustin's rig, added - same as above
+#endif
 #ifdef USE_PROMICRO
         CONFIG_SERIAL.print("m");
 #endif
