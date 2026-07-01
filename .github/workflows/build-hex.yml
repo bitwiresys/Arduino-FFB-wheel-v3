@@ -1,0 +1,75 @@
+name: Build HEX
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build-hex:
+    runs-on: windows-latest
+    env:
+      ZIP_PATH: build.zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Arduino CLI
+        uses: arduino/setup-arduino-cli@v1
+
+      - name: Install Arduino AVR core
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr@1.6.21
+
+      - name: Apply modified Arduino core
+        shell: pwsh
+        run: |
+          $coreDir = Join-Path $env:LOCALAPPDATA "Arduino15\packages\arduino\hardware\avr\1.6.21\cores"
+          Rename-Item -Path (Join-Path $coreDir "arduino") -NewName "arduino_org"
+          Copy-Item -Path "arduino-1.8.5\hardware\arduino\cores\arduino" -Destination (Join-Path $coreDir "arduino") -Recurse
+          Copy-Item -Path (Join-Path $coreDir "arduino_org\IPAddress.cpp") -Destination (Join-Path $coreDir "arduino") -Force
+          Copy-Item -Path (Join-Path $coreDir "arduino_org\IPAddress.h") -Destination (Join-Path $coreDir "arduino") -Force
+          Copy-Item -Path (Join-Path $coreDir "arduino_org\new.cpp") -Destination (Join-Path $coreDir "arduino") -Force
+          Copy-Item -Path (Join-Path $coreDir "arduino_org\new.h") -Destination (Join-Path $coreDir "arduino") -Force
+
+      - name: Install custom libraries
+        shell: pwsh
+        run: |
+          $libDir = Join-Path $env:USERPROFILE "Arduino\libraries"
+          New-Item -ItemType Directory -Force -Path $libDir | Out-Null
+          Copy-Item -Path "arduino-1.8.5\libraries\*" -Destination $libDir -Recurse -Force
+          "ARDUINO_LIB_DIR=$libDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build all supported variants
+        shell: pwsh
+        run: |
+          python .github\scripts\build_hex.py
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-build
+          path: dist/
+
+      # dustin's rig, added - a green CI run (every variant listed in
+      # .github/variants/*.txt compiled successfully) automatically publishes a
+      # GitHub Release with the full hex bundle + manifest.json, so there's
+      # always a downloadable, up-to-date build matching the latest commit.
+      - name: Publish release
+        if: success() && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: fw-build-${{ github.run_number }}
+          name: "Firmware build ${{ github.run_number }}"
+          body: |
+            Automatic build from commit ${{ github.sha }}.
+            Contains .hex files for every supported board/hardware combination
+            (see `.github/variants/leonardo.txt` and `.github/variants/promicro.txt`
+            for the full list), plus `manifest.json` describing what each file enables.
+          files: ${{ env.ZIP_PATH }}
+          generate_release_notes: false

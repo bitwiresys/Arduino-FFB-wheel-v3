@@ -1,0 +1,50 @@
+# One letter-combo per line for arduino:avr:micro (ProMicro) builds.
+# "-" means the base build with no optional letters.
+# See brWheel_my/docs for what each letter enables.
+# Lines here MUST fit in the ATmega32U4's 32KB flash - CI verifies this on every push.
+-
+abx
+acdwhx
+achexn
+achx
+achxn
+acx
+ahxnl
+ax
+azhxn
+bcdwuxg
+bcdwux
+bcdwxg
+bcdwx
+bdwuxg
+bdwux
+bdxg
+bxg
+bx
+cdwhx
+chfxn
+chfxnr
+chtx
+cx
+dkx
+dwfx
+dwxn
+dx
+fx
+htx
+hxl
+hxng
+hxnl
+hxnr
+ix
+kx
+sx
+x
+xg
+xl
+xnr
+zfx
+zhtx
+zhxn
+zhxnl
+zx
