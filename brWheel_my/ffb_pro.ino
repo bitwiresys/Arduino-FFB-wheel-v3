@@ -547,12 +547,19 @@ s32v cFFB::CalcTorqueCommands (s32v *pos) { // milos, pointer struct agument, re
 #ifdef USE_MOTOR_NTC
     if (ntcTripped) command.x = 0; // dustin's rig, added - critical motor overtemp: hard cut FFB output
 #endif
+#ifdef USE_MOTOR_CURRENT
+    CheckMotorCurrentLimit(); // dustin's rig, added - every FFB cycle, current can spike fast
+    command.x = s32(command.x * currentLimitScale);
+#endif
 #ifndef USE_TWOFFBAXIS // milos, for 1 FFB axis
     if (bitRead(effstate, 4)) CONFIG_SERIAL.println(command.x); // milos, added - FFB real time monitor
 #else // for 2 ffb axis
     command.y = ConstrainEffect(command.y * configGeneralGain / 100 * gDeviceGain / 255); // milos, added gDeviceGain
 #ifdef USE_MOTOR_NTC
     if (ntcTripped) command.y = 0; // dustin's rig, added
+#endif
+#ifdef USE_MOTOR_CURRENT
+    command.y = s32(command.y * currentLimitScale); // dustin's rig, added - CheckMotorCurrentLimit() already ran above for command.x this cycle
 #endif
     if (bitRead(effstate, 4)) { // milos, for 2 ffb axis we send X and Y forces to FFB monitor
       CONFIG_SERIAL.print(command.x); // milos, FFB X axis

@@ -63,6 +63,8 @@ void SetDefaultEEPROMConfig() { // milos - store default firmware settings in EE
   SetParam(PARAM_ADDR_AXIS_DISABLE, v8);
   v16 = 1023; // dustin's rig, added - placeholder NTC threshold (max = effectively disabled); MUST be calibrated with the 'N' command for your actual thermistor/resistor pair before it does anything useful
   SetParam(PARAM_ADDR_NTC_THRESH, v16);
+  v16 = 1023; // dustin's rig, added - placeholder current limit (max = no limit); set with the 'K' command
+  SetParam(PARAM_ADDR_CURRENT_LIMIT, v16);
 #ifndef USE_AS5600
   v32 = 2400; // milos, default CPR value for optical encoder (this is for 600PPR)
 #else
@@ -136,6 +138,9 @@ void LoadEEPROMConfig () { //milos, added - updates all v8 parameters from EEPRO
 #ifdef USE_MOTOR_NTC
   GetParam(PARAM_ADDR_NTC_THRESH, ntcThreshold); // dustin's rig, added
 #endif
+#ifdef USE_MOTOR_CURRENT
+  GetParam(PARAM_ADDR_CURRENT_LIMIT, currentLimitRaw); // dustin's rig, added
+#endif
   GetParam(PARAM_ADDR_MIN_TORQ, MM_MIN_MOTOR_TORQUE);
   GetParam(PARAM_ADDR_MAX_TORQ, MM_MAX_MOTOR_TORQUE);
   GetParam(PARAM_ADDR_MAX_DAC, MAX_DAC);
@@ -195,6 +200,9 @@ void SaveEEPROMConfig () { //milos, added - saves all v8 parameters in EEPROM
 #endif
 #ifdef USE_MOTOR_NTC
   SetParam(PARAM_ADDR_NTC_THRESH, ntcThreshold); // dustin's rig, added
+#endif
+#ifdef USE_MOTOR_CURRENT
+  SetParam(PARAM_ADDR_CURRENT_LIMIT, currentLimitRaw); // dustin's rig, added
 #endif
   SetParam(PARAM_ADDR_MIN_TORQ, MM_MIN_MOTOR_TORQUE);
   SetParam(PARAM_ADDR_MAX_TORQ, MM_MAX_MOTOR_TORQUE);

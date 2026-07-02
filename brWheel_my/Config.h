@@ -289,14 +289,19 @@ uint8_t LC_scaling; // milos, load cell scaling factor (affects brake pressure, 
 // instead: heat the motor to the temperature you want to cut off at, read the live raw value with
 // the 'N' command, and set that as the threshold with 'N <value>'.
 #define PARAM_ADDR_NTC_THRESH    0x3C
+// dustin's rig, added - motor current hard limit, raw analogRead() counts (0-1023), same
+// sentinel convention as NTC above (1023 = no limit set / disabled). Set via the 'K'
+// command using the same raw<->mA formula as the 'J' current readout (see MOTOR_CURRENT_*
+// constants) - the control panel does that conversion, the firmware only stores raw.
+#define PARAM_ADDR_CURRENT_LIMIT 0x3D
 
-#define FIRMWARE_VERSION         0xFB // dustin's rig, bumped from 0xFA - forces a fresh EEPROM defaults load on first boot (new PARAM_ADDR_AXIS_INVERT/DISABLE/NTC_THRESH fields, and clears out any EEPROM corruption from the pre-fix 'W' command SetParam size-mismatch bug)
+#define FIRMWARE_VERSION         0xFD // dustin's rig, bumped from 0xFC - SetDefaultEEPROMConfig() was missing the PARAM_ADDR_CURRENT_LIMIT default write entirely (fixed in Config.ino), so boards that already saw 0xFC have a garbage value stuck at that EEPROM address
 
 // dustin's rig, added - CI overwrites this with the GitHub Actions run number before compiling
 // each release (matches the numeric suffix of the "fw-build-N" release tag exactly), so the
 // control panel can tell "is my board on the latest release" with a single integer comparison
 // instead of guessing from feature letters. Local/manual builds keep the 0 placeholder.
-#define FW_BUILD_ID              99
+#define FW_BUILD_ID              100
 
 #define GetParam(m_offset,m_data)	getParam((m_offset),(u8*)&(m_data),sizeof(m_data))
 #define SetParam(m_offset,m_data)	setParam((m_offset),(u8*)&(m_data),sizeof(m_data))
@@ -458,6 +463,10 @@ u8 axisDisableMask;
 u16 ntcThreshold; // dustin's rig, added - critical FFB-cutoff raw ADC threshold (0-1023), loaded from EEPROM (see PARAM_ADDR_NTC_THRESH). 1023 = sentinel/uncalibrated, feature stays inert (see CheckMotorNTC())
 bool ntcTripped;  // dustin's rig, added - latched overtemp state (with hysteresis, see NTC_HYSTERESIS and CheckMotorNTC())
 #define NTC_HYSTERESIS 20 // dustin's rig, added - raw ADC counts of hysteresis so FFB doesn't chatter on/off right at the threshold
+#endif
+#ifdef USE_MOTOR_CURRENT
+u16 currentLimitRaw; // dustin's rig, added - hard current cap, raw ADC (0-1023), loaded from EEPROM (see PARAM_ADDR_CURRENT_LIMIT). 1023 = sentinel/no limit set, feature stays inert (see CheckMotorCurrentLimit())
+float currentLimitScale = 1.0; // dustin's rig, added - runtime torque multiplier (0..1), backed off when live current exceeds currentLimitRaw, recovered gradually otherwise - see CheckMotorCurrentLimit()
 #endif
 
 // milos, changed these from f32 to u8 (loaded from EEPROM)

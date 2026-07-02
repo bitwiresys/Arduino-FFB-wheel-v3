@@ -185,6 +185,23 @@ long ReadMotorCurrentMA() {
   // one long-integer-friendly expression: mA = raw * 5000 * ratio / (1023 * R_sense)
   return (long)((float)raw * 5000.0 * MOTOR_CURRENT_MIRROR_RATIO / (1023.0 * MOTOR_CURRENT_SENSE_OHMS));
 }
+
+// dustin's rig, added - hard current cap: never let commanded torque produce more than
+// currentLimitRaw worth of measured current. Called every FFB cycle (500Hz, see ffb_pro.ino)
+// rather than piggybacking on the slower 100Hz serial-check timer used for the NTC check -
+// current can spike fast, this needs to react fast. Backs off in big steps (fast, protective),
+// recovers in small steps (slow, avoids hunting/oscillating right at the limit).
+void CheckMotorCurrentLimit() {
+  if (currentLimitRaw >= 1023) { currentLimitScale = 1.0; return; } // sentinel: no limit set, stay fully open
+  int raw = analogRead(MOTOR_CURRENT_PIN);
+  if (raw >= (int)currentLimitRaw) {
+    currentLimitScale -= 0.08;
+    if (currentLimitScale < 0.0) currentLimitScale = 0.0;
+  } else if (currentLimitScale < 1.0) {
+    currentLimitScale += 0.01;
+    if (currentLimitScale > 1.0) currentLimitScale = 1.0;
+  }
+}
 #endif
 
 //--------------------------------------------------------------------------------------------------------
@@ -258,6 +275,9 @@ void setup() {
 #endif
 #ifdef USE_MOTOR_NTC
   ntcThreshold = 1023; // dustin's rig, added - placeholder (effectively disabled) until calibrated with the 'N' command
+#endif
+#ifdef USE_MOTOR_CURRENT
+  currentLimitRaw = 1023; // dustin's rig, added - placeholder (effectively disabled/no limit) until set with the 'K' command
 #endif
 #ifdef USE_AUTOCALIB //milos, reset limits for autocalibration of pedals
   accel.min = Z_AXIS_LOG_MAX;

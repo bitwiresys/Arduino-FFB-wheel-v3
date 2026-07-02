@@ -53,9 +53,15 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
         CONFIG_SERIAL.print(' ');
         CONFIG_SERIAL.print(axisInvertMask, DEC); // dustin's rig, added
         CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.println(axisDisableMask, DEC); // dustin's rig, added
+        CONFIG_SERIAL.print(axisDisableMask, DEC); // dustin's rig, added
 #else
-        CONFIG_SERIAL.println(pwmstate, DEC); //milos, send pwmstate byte in decimal form
+        CONFIG_SERIAL.print(pwmstate, DEC); //milos, send pwmstate byte in decimal form
+#endif
+#ifdef USE_MOTOR_CURRENT
+        CONFIG_SERIAL.print(' ');
+        CONFIG_SERIAL.println(currentLimitRaw); // dustin's rig, added - trailing field, only present on builds with USE_MOTOR_CURRENT
+#else
+        CONFIG_SERIAL.println();
 #endif
         break;
       case 'V':
@@ -307,6 +313,11 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
 #ifdef USE_MOTOR_CURRENT
       case 'J': // dustin's rig, added - read-only: live motor current in mA (see ReadMotorCurrentMA()) - no argument, nothing to accidentally clobber
         CONFIG_SERIAL.println(ReadMotorCurrentMA());
+        break;
+      case 'K': // dustin's rig, added - set the hard current limit (raw ADC 0-1023, 1023 = disabled); use 'A' command to save to EEPROM
+        temp = CONFIG_SERIAL.parseInt();
+        currentLimitRaw = constrain(temp, 0, 1023);
+        CONFIG_SERIAL.println(currentLimitRaw);
         break;
 #endif // end of motor current
       case 'W': //milos, added - configure PWM settings and frequency
