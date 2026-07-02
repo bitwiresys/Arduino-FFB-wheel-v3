@@ -200,7 +200,9 @@ void InitButtons() { // milos, added - if not using shift register, allocate som
 #endif
   pinMode(BUTTON2, INPUT_PULLUP);
 #ifndef USE_PROMICRO
+#ifdef BUTTON3 // dustin's rig, added - undefined when D12 is used for the motor current sense pin instead
   pinMode(BUTTON3, INPUT_PULLUP); // for Leonardo and Micro, we can use button3 even with z-index
+#endif
 #else // if use proMicro
 #ifndef USE_ZINDEX
   pinMode(BUTTON3, INPUT_PULLUP); // on proMicro only available if we do not use z-index
@@ -425,8 +427,10 @@ bool readSingleButton (uint8_t i) { // milos, added
 #endif
   } else if (i == 2) {
     temp = !bitRead(digitalReadFast(BUTTON2), B2PORTBIT); // milos, read bit0 from PINF A5 (or bit1 from PINB D15 on ProMicro) into buttons bit2
+#ifdef BUTTON3 // dustin's rig, added - undefined when D12 is used for the motor current sense pin instead
   } else if (i == 3) {
     temp = !bitRead(digitalReadFast(BUTTON3), B3PORTBIT); // milos, read bit6 from PIND D12 into buttons bit3
+#endif
   } else if (i == 4) {
     temp = !bitRead(digitalReadFast(BUTTON4), B4PORTBIT); // milos, read bit7 from PIND D6 into buttons bit4
   } else if (i == 5) {

@@ -38,6 +38,32 @@
 // dustin's rig, added - both gated behind their own option letter (like everything else above)
 // instead of being baked into every single variant, since most rigs don't have either one.
 #define USE_AXIS_TWEAKS  // milos-style, added - per-axis invert/disable via serial commands 'I'/'D' (see SendAxisReport()) // dustin's rig: enabled
+// dustin's rig, added - NTC 100K motor thermistor (BTS7960 driven motor) over-temperature FFB
+// cutoff. Gated behind its own option letter (not every rig has a thermistor wired up).
+// Toggle must live here (before the button-pin block below) - the BUTTON1-vs-NTC_PIN
+// conflict check there is a preprocessor #if, which only sees defines already seen by
+// this point in the file, not ones further down.
+#define USE_MOTOR_NTC // dustin's rig: enabled
+#ifdef USE_MOTOR_NTC
+#define NTC_PIN       A4 // free analog pin on this build (button1/A4 unused)
+#endif
+// dustin's rig, added - live motor current readout via the BTS7960 module's own IS pin
+// (current-mirror output through the module's onboard sense resistor). D12 is normally
+// BUTTON3 on this pinout (see the button re-map block below) - repurposed here since this
+// rig doesn't have a physical button wired to it. D12 = ADC9 on 32u4, analogRead() works
+// on it directly like any other analog-capable pin. Same ordering requirement as above.
+#define USE_MOTOR_CURRENT // dustin's rig: enabled
+#ifdef USE_MOTOR_CURRENT
+#define MOTOR_CURRENT_PIN 12
+// BTS7960 datasheet current-mirror ratio (I_load / I_IS), ~8500 typical but varies by
+// batch (7500-9500 per Infineon's own datasheet spread). MOTOR_CURRENT_SENSE_OHMS is the
+// sense resistor the breakout module puts across IS-to-GND to turn that mirrored current
+// into a voltage - 1000 ohm is the most common value on these 43A clone modules, but it's
+// not guaranteed. If readings look off by a roughly constant factor, adjust
+// MOTOR_CURRENT_SENSE_OHMS (rather than the mirror ratio) to match the actual module.
+#define MOTOR_CURRENT_MIRROR_RATIO 8500.0
+#define MOTOR_CURRENT_SENSE_OHMS   1000.0
+#endif
 //#define USE_MCP4725      // milos, 12bit DAC (0-5V), uncomment to enable output of FFB signal as 2ch DAC voltage output
 //#define USE_ANALOGFFBAXIS // milos, uncomment to enable other than X-axis to be tied with xFFB axis (you can use analog inputs instead of digital encoders
 //#define USE_PROMICRO    // milos, uncomment if you are using Arduino ProMicro board (leave commented for Leonardo or Micro variants)
@@ -130,8 +156,10 @@
 #define B2PORTBIT 6 // read bit6 of PINE
 // milos, end of button re-map
 #endif // end of xy shifter
+#if !(defined(USE_MOTOR_CURRENT) && MOTOR_CURRENT_PIN == 12) // dustin's rig, added - D12 is used for the BTS7960 IS current-sense pin instead of button3 on this build
 #define BUTTON3 12 // D12, used for button3 on leonardo/micro
 #define B3PORTBIT 6 // read bit6 of PIND
+#endif // end of motor current on D12
 #else // for Pro Micro
 // milos, re-map buttons 0,4,7 when xy shifter is used to be available for hat switch on proMicro
 #ifdef USE_HATSWITCH // milos, with hat switch
@@ -182,13 +210,6 @@
 #define DIR_PIN       11 // milos, PWM direction pin: 0V-left (negative force), 5V-right (positive force)
 #else // for Pro Micro
 #define DIR_PIN       16 // pin16
-#endif
-
-// dustin's rig, added - NTC 100K motor thermistor (BTS7960 driven motor) over-temperature FFB
-// cutoff. Gated behind its own option letter (not every rig has a thermistor wired up).
-#define USE_MOTOR_NTC // dustin's rig: enabled
-#ifdef USE_MOTOR_NTC
-#define NTC_PIN       A4 // free analog pin on this build (button1/A4 unused)
 #endif
 
 #define ACCEL_INPUT 0
@@ -275,7 +296,7 @@ uint8_t LC_scaling; // milos, load cell scaling factor (affects brake pressure, 
 // each release (matches the numeric suffix of the "fw-build-N" release tag exactly), so the
 // control panel can tell "is my board on the latest release" with a single integer comparison
 // instead of guessing from feature letters. Local/manual builds keep the 0 placeholder.
-#define FW_BUILD_ID              0
+#define FW_BUILD_ID              99
 
 #define GetParam(m_offset,m_data)	getParam((m_offset),(u8*)&(m_data),sizeof(m_data))
 #define SetParam(m_offset,m_data)	setParam((m_offset),(u8*)&(m_data),sizeof(m_data))

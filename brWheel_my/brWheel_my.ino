@@ -175,6 +175,18 @@ void CheckMotorNTC() {
 }
 #endif
 
+#ifdef USE_MOTOR_CURRENT
+// dustin's rig, added - reads the BTS7960 IS pin and converts to milliamps of actual motor
+// current, using the fixed calibration constants in Config.h (no in-firmware calibration,
+// same philosophy as the NTC threshold - see MOTOR_CURRENT_MIRROR_RATIO/SENSE_OHMS comments).
+long ReadMotorCurrentMA() {
+  int raw = analogRead(MOTOR_CURRENT_PIN);
+  // I_load(A) = (raw/1023 * 5V) / R_sense * mirror_ratio, rearranged to keep everything in
+  // one long-integer-friendly expression: mA = raw * 5000 * ratio / (1023 * R_sense)
+  return (long)((float)raw * 5000.0 * MOTOR_CURRENT_MIRROR_RATIO / (1023.0 * MOTOR_CURRENT_SENSE_OHMS));
+}
+#endif
+
 //--------------------------------------------------------------------------------------------------------
 //-------------------------------------------- SETUP -----------------------------------------------------
 //--------------------------------------------------------------------------------------------------------

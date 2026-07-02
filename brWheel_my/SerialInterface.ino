@@ -128,6 +128,9 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
 #ifdef USE_AXIS_TWEAKS
         CONFIG_SERIAL.print("v"); // dustin's rig, added - same as above
 #endif
+#ifdef USE_MOTOR_CURRENT
+        CONFIG_SERIAL.print("q"); // dustin's rig, added - same as above
+#endif
 #ifdef USE_PROMICRO
         CONFIG_SERIAL.print("m");
 #endif
@@ -301,6 +304,11 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
         CONFIG_SERIAL.println(ntcThreshold);
         break;
 #endif // end of motor ntc
+#ifdef USE_MOTOR_CURRENT
+      case 'J': // dustin's rig, added - read-only: live motor current in mA (see ReadMotorCurrentMA()) - no argument, nothing to accidentally clobber
+        CONFIG_SERIAL.println(ReadMotorCurrentMA());
+        break;
+#endif // end of motor current
       case 'W': //milos, added - configure PWM settings and frequency
 #ifdef USE_EEPROM
         ffb_temp = CONFIG_SERIAL.parseInt();

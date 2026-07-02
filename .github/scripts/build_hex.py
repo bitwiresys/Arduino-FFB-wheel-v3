@@ -50,6 +50,7 @@ DEFINE_MAP: dict[str, tuple[str, str]] = {
     "k": ("USE_SPLITAXIS", "Gas axis split into separate gas/brake axes"),
     "o": ("USE_MOTOR_NTC", "Motor NTC 100k thermistor over-temperature FFB cutoff"),
     "v": ("USE_AXIS_TWEAKS", "Per-axis invert/disable via serial commands"),
+    "q": ("USE_MOTOR_CURRENT", "Live motor current readout via the BTS7960 IS pin"),
 }
 
 # letters that don't map to a single #define but change other build behavior;
