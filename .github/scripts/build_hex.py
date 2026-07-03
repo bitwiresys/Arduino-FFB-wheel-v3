@@ -48,9 +48,7 @@ DEFINE_MAP: dict[str, tuple[str, str]] = {
     "u": ("USE_TCA9548", "Dual magnetic encoders via I2C multiplexer (TCA9548A)"),
     "c": ("USE_CENTERBTN", "Hardware wheel recenter button"),
     "k": ("USE_SPLITAXIS", "Gas axis split into separate gas/brake axes"),
-    "o": ("USE_MOTOR_NTC", "Motor NTC 100k thermistor over-temperature FFB cutoff"),
     "v": ("USE_AXIS_TWEAKS", "Per-axis invert/disable via serial commands"),
-    "q": ("USE_MOTOR_CURRENT", "Live motor current readout via the BTS7960 IS pin"),
 }
 
 # letters that don't map to a single #define but change other build behavior;
@@ -96,7 +94,7 @@ def set_define_value(lines: list[str], name: str, value: str) -> list[str]:
     return updated
 
 
-def apply_options(base_config: list[str], letters: str, promicro: bool) -> list[str]:
+def apply_options(base_config: list[str], letters: str) -> list[str]:
     letter_set = set(letters)
 
     enabled_defines = {DEFINE_MAP[ch][0] for ch in letter_set if ch in DEFINE_MAP}
@@ -113,7 +111,6 @@ def apply_options(base_config: list[str], letters: str, promicro: bool) -> list[
     updated = set_define(updated, "USE_SHIFT_REGISTER", use_shift_register)
     updated = set_define(updated, "USE_SN74ALS166N", use_sn74)
     updated = set_define(updated, "USE_EEPROM", use_eeprom)
-    updated = set_define(updated, "USE_PROMICRO", promicro)
     updated = set_define(updated, "USE_QUADRATURE_ENCODER", use_quadrature)
     updated = set_define_value(updated, "FW_BUILD_ID", FW_BUILD_ID)
 
@@ -144,12 +141,12 @@ def describe_letters(letters: str) -> list[str]:
     return descriptions
 
 
-def compile_variant(fqbn: str, letters: str, promicro: bool, output_name: str, output_dir: Path) -> None:
+def compile_variant(fqbn: str, letters: str, output_name: str, output_dir: Path) -> None:
     build_dir = ROOT / "build" / fqbn.replace(":", "_") / output_name.replace(".hex", "")
     build_dir.mkdir(parents=True, exist_ok=True)
 
     base_config = CONFIG_PATH.read_text(encoding="utf-8").splitlines(keepends=True)
-    updated = apply_options(base_config, letters, promicro)
+    updated = apply_options(base_config, letters)
     CONFIG_PATH.write_text("".join(updated), encoding="utf-8")
 
     cmd = [
@@ -171,7 +168,7 @@ def compile_variant(fqbn: str, letters: str, promicro: bool, output_name: str, o
     shutil.copy2(hex_path, output_dir / output_name)
 
 
-def build_board(board: str, fqbn: str, promicro: bool, filename_fmt: str) -> tuple[list[dict], list[str]]:
+def build_board(board: str, fqbn: str, filename_fmt: str) -> tuple[list[dict], list[str]]:
     variants = read_variant_list(VARIANTS_DIR / f"{board}.txt")
     output_dir = DIST_DIR / board
     manifest_entries = []
@@ -180,7 +177,7 @@ def build_board(board: str, fqbn: str, promicro: bool, filename_fmt: str) -> tup
     for letters in variants:
         output_name = filename_fmt.format(letters=letters)
         try:
-            compile_variant(fqbn, letters, promicro, output_name, output_dir)
+            compile_variant(fqbn, letters, output_name, output_dir)
         except subprocess.CalledProcessError:
             failures.append(output_name)
             continue
@@ -199,19 +196,16 @@ def main() -> None:
         shutil.rmtree(DIST_DIR)
     DIST_DIR.mkdir(parents=True)
 
+    # dustin's rig - Leonardo only: ProMicro/Micro variants removed from the firmware entirely
     leo_entries, leo_failures = build_board(
-        "leonardo", "arduino:avr:leonardo", promicro=False,
+        "leonardo", "arduino:avr:leonardo",
         filename_fmt="brWheel_my.ino.leonardo_" + FW_VERSION + "{letters}.hex",
-    )
-    pro_entries, pro_failures = build_board(
-        "promicro", "arduino:avr:micro", promicro=True,
-        filename_fmt="brWheel_my.ino.micro_" + FW_VERSION + "{letters}m.hex",
     )
 
     manifest = {
         "firmware_version": FW_VERSION,
         "build_id": FW_BUILD_ID,
-        "variants": leo_entries + pro_entries,
+        "variants": leo_entries,
     }
     (DIST_DIR / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
@@ -224,7 +218,7 @@ def main() -> None:
             if path.is_file():
                 zipf.write(path, path.relative_to(DIST_DIR))
 
-    failures = leo_failures + pro_failures
+    failures = leo_failures
     if failures:
         raise RuntimeError("Build failed for: " + ", ".join(sorted(failures)))
 
