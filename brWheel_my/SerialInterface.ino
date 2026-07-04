@@ -9,12 +9,50 @@ u8 toUpper(u8 c) {
   return (c);
 }
 
+// dustin's rig, added - shared by the 'O' (new CPR) and 'G' (new rotation degrees) handlers,
+// which used to carry two identical copies of this read-angle/rescale/rewrite-encoder block
+// (saves a good chunk of flash). Keeps the current wheel angle while ROTATION_DEG/CPR change.
+static void reindexEncoder(int16_t newDeg, int32_t newCpr) {
+  s32 enc;
+#ifdef USE_AS5600
+#ifdef USE_TCA9548
+  TcaChannelSel(baseTCA0, 0); // milos, select 1st i2C channel for AS5600(0x36) on x-axis
+#endif // end of tca
+  enc = as5600x.getCumulativePosition() - ROTATION_MID;
+#else // if no as5600
+#ifdef USE_QUADRATURE_ENCODER
+  enc = myEnc.Read() - ROTATION_MID + brWheelFFB.offset;
+#else // milos, if no digital encoders
+  enc = 0;
+#endif // end of quad enc
+#endif // end of as5600
+  f32 wheelAngle = f32(enc) * f32(ROTATION_DEG) / f32(ROTATION_MAX); // milos, current wheel angle
+  ROTATION_DEG = newDeg;
+  CPR = newCpr;
+  ROTATION_MAX = int32_t(f32(CPR) / 360.0 * f32(ROTATION_DEG));
+  ROTATION_MID = ROTATION_MAX >> 1;
+  enc = int32_t(wheelAngle * f32(ROTATION_MAX) / f32(ROTATION_DEG)); // milos, here we recover the old wheel angle
+#ifdef USE_AS5600
+#ifdef USE_TCA9548
+  TcaChannelSel(baseTCA0, 0);
+#endif // end of tca
+  as5600x.resetCumulativePosition(enc + ROTATION_MID);
+#ifdef USE_TCA9548
+  TcaChannelSel(baseTCA0, 1); // milos, select 2nd i2C channel for AS5600(0x36) on y-axis
+  as5600y.resetCumulativePosition(enc + ROTATION_MID);
+#endif // end of tca
+#else // if no as5600
+#ifdef USE_QUADRATURE_ENCODER
+  myEnc.Write(enc + ROTATION_MID - brWheelFFB.offset);
+#endif // end of quad enc
+#endif // end of as5600
+}
+
 void configCDC() { // milos, virtual serial port firmware configuration interface
   if (CONFIG_SERIAL.available() > 0) {
     u8 c = toUpper(CONFIG_SERIAL.read());
     //DEBUG_SERIAL.println(c);
-    s32 temp, temp1;
-    f32 wheelAngle;
+    s32 temp;
     u8 ffb_temp;
     switch (c) {
       case 'U': // milos, send all firmware settings
@@ -48,21 +86,14 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
         CONFIG_SERIAL.print(' ');
         CONFIG_SERIAL.print(CPR); //milos, send CPR as parameter
         CONFIG_SERIAL.print(' ');
-#ifdef USE_AXIS_TWEAKS
         CONFIG_SERIAL.print(pwmstate, DEC); //milos, send pwmstate byte in decimal form
+#ifdef USE_AXIS_TWEAKS
         CONFIG_SERIAL.print(' ');
         CONFIG_SERIAL.print(axisInvertMask, DEC); // dustin's rig, added
         CONFIG_SERIAL.print(' ');
         CONFIG_SERIAL.print(axisDisableMask, DEC); // dustin's rig, added
-#else
-        CONFIG_SERIAL.print(pwmstate, DEC); //milos, send pwmstate byte in decimal form
 #endif
-#ifdef USE_MOTOR_CURRENT
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.println(currentLimitRaw); // dustin's rig, added - trailing field, only present on builds with USE_MOTOR_CURRENT
-#else
         CONFIG_SERIAL.println();
-#endif
         break;
       case 'V':
         CONFIG_SERIAL.print("fw-v");
@@ -128,17 +159,8 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
 #ifndef USE_EEPROM
         CONFIG_SERIAL.print("p");
 #endif
-#ifdef USE_MOTOR_NTC
-        CONFIG_SERIAL.print("o"); // dustin's rig, added - was missing from the V reply, GUI firmware-update matching needs every active letter reported
-#endif
 #ifdef USE_AXIS_TWEAKS
-        CONFIG_SERIAL.print("v"); // dustin's rig, added - same as above
-#endif
-#ifdef USE_MOTOR_CURRENT
-        CONFIG_SERIAL.print("q"); // dustin's rig, added - same as above
-#endif
-#ifdef USE_PROMICRO
-        CONFIG_SERIAL.print("m");
+        CONFIG_SERIAL.print("v"); // dustin's rig, added - was missing from the V reply, GUI firmware-update matching needs every active letter reported
 #endif
         CONFIG_SERIAL.print("\r\n");
         break;
@@ -147,6 +169,9 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
         break;
       case 'S':
         CONFIG_SERIAL.println(brWheelFFB.state, DEC);
+        break;
+      case 'T': // dustin's rig, added - drivetrain watchdog state: 1 = fault latched, FFB is cut until the board restarts
+        CONFIG_SERIAL.println(ffbFault ? 1 : 0);
         break;
       case 'R':
         brWheelFFB.calibrate();
@@ -169,39 +194,9 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
 #endif // end of autocalib
         break;
       case 'O': // milos, added to adjust optical encoder CPR
-#ifdef USE_AS5600 // milos, with AS5600
-#ifdef USE_TCA9548
-        TcaChannelSel(baseTCA0, 0); // milos, select 1st i2C channel for AS5600(0x36) on x-axis
-#endif // end of tca
-        temp1 = as5600x.getCumulativePosition() - ROTATION_MID; // milos
-#else // if no as5600
-#ifdef USE_QUADRATURE_ENCODER
-        temp1 = myEnc.Read() - ROTATION_MID + brWheelFFB.offset; // milos
-#else // milos, if no digital encoders
-        temp1 = 0;
-#endif // end of quad enc
-#endif // end of as5600
         temp = CONFIG_SERIAL.parseInt();
         temp = constrain(temp, 4, 600000); // milos, extended to 32bit (100000*6)
-        wheelAngle = float(temp1) * float(ROTATION_DEG) / float(ROTATION_MAX); // milos, current wheel angle
-        CPR = temp; // milos, update CPR
-        ROTATION_MAX = int32_t(float(CPR) / 360.0 * float(ROTATION_DEG)); // milos, updated
-        ROTATION_MID = ROTATION_MAX >> 1; // milos, updated, divide by 2
-        temp1 = int32_t(wheelAngle * float(ROTATION_MAX) / float(ROTATION_DEG)); // milos, here we recover the old wheel angle
-#ifdef USE_AS5600 // milos, with AS5600
-#ifdef USE_TCA9548
-        TcaChannelSel(baseTCA0, 0); // milos, select 1st i2C channel for AS5600(0x36) on x-axis
-#endif // end of tca
-        as5600x.resetCumulativePosition(temp1 + ROTATION_MID); // milos
-#ifdef USE_TCA9548
-        TcaChannelSel(baseTCA0, 1); // milos, select 2nd i2C channel for AS5600(0x36) on y-axis
-        as5600y.resetCumulativePosition(temp1 + ROTATION_MID); // milos, 2nd as5600
-#endif // end of tca
-#else // if no as5600
-#ifdef USE_QUADRATURE_ENCODER
-        myEnc.Write(temp1 + ROTATION_MID - brWheelFFB.offset); // milos
-#endif // end of quad enc
-#endif // end of as5600
+        reindexEncoder(ROTATION_DEG, temp); // dustin's rig - shared helper, see above
         CONFIG_SERIAL.println(1);
         //SetParam(PARAM_ADDR_ENC_CPR, CPR); // milos, update EEPROM
         break;
@@ -238,39 +233,9 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
 #endif // end of zindex
         break;
       case 'G': // milos, set new rotation angle
-#ifdef USE_AS5600 // milos, with AS5600
-#ifdef USE_TCA9548
-        TcaChannelSel(baseTCA0, 0); // milos, select 1st i2C channel for AS5600(0x36) on x-axis
-#endif // end of tca
-        temp1 = as5600x.getCumulativePosition() - ROTATION_MID; // milos
-#else // if no as5600
-#ifdef USE_QUADRATURE_ENCODER
-        temp1 = myEnc.Read() - ROTATION_MID + brWheelFFB.offset; // milos
-#else // milos, if no digital encoders
-        temp1 = 0;
-#endif // end of quad enc
-#endif // end of as5600
         temp = CONFIG_SERIAL.parseInt();
         temp = constrain(temp, 30, 1800); // milos
-        wheelAngle = float(temp1) * float(ROTATION_DEG) / float(ROTATION_MAX); // milos, current wheel angle
-        ROTATION_DEG = temp; // milos, update degrees of rotation
-        ROTATION_MAX = int32_t(float(CPR) / 360.0 * float(ROTATION_DEG)); // milos, updated
-        ROTATION_MID = ROTATION_MAX >> 1; // milos, updated, divide by 2
-        temp1 = int32_t(wheelAngle * float(ROTATION_MAX) / float(ROTATION_DEG)); // milos, here we recover the old wheel angle
-#ifdef USE_AS5600 // milos, with AS5600
-#ifdef USE_TCA9548
-        TcaChannelSel(baseTCA0, 0); // milos, select 1st i2C channel for AS5600(0x36) on x-axis
-#endif // end of tca
-        as5600x.resetCumulativePosition(temp1 + ROTATION_MID); // milos, 1st as5600
-#ifdef USE_TCA9548
-        TcaChannelSel(baseTCA0, 1); // milos, select 2nd i2C channel for AS5600(0x36) on y-axis
-        as5600y.resetCumulativePosition(temp1 + ROTATION_MID); // milos, 2nd as5600
-#endif // end of tca
-#else // if no as5600
-#ifdef USE_QUADRATURE_ENCODER
-        myEnc.Write(temp1 + ROTATION_MID - brWheelFFB.offset); // milos
-#endif // end of quad enc
-#endif // end of as5600
+        reindexEncoder(temp, CPR); // dustin's rig - shared helper, see above
         CONFIG_SERIAL.println(1);
         //SetParam(PARAM_ADDR_ROTATION_DEG, temp);// milos, update EEPROM
         break;
@@ -296,30 +261,6 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
         CONFIG_SERIAL.println(axisDisableMask, BIN);
         break;
 #endif // end of axis tweaks
-#ifdef USE_MOTOR_NTC
-      case 'N': // dustin's rig, added - read-only: live raw NTC ADC value, current threshold, tripped flag (for calibrating the cutoff - no argument, so nothing to accidentally clobber)
-        CONFIG_SERIAL.print(analogRead(NTC_PIN));
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(ntcThreshold);
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.println(ntcTripped);
-        break;
-      case 'M': // dustin's rig, added - set the NTC critical shutdown threshold (raw ADC 0-1023); use 'A' command to save to EEPROM
-        temp = CONFIG_SERIAL.parseInt();
-        ntcThreshold = constrain(temp, 0, 1023);
-        CONFIG_SERIAL.println(ntcThreshold);
-        break;
-#endif // end of motor ntc
-#ifdef USE_MOTOR_CURRENT
-      case 'J': // dustin's rig, added - read-only: live motor current in mA (see ReadMotorCurrentMA()) - no argument, nothing to accidentally clobber
-        CONFIG_SERIAL.println(ReadMotorCurrentMA());
-        break;
-      case 'K': // dustin's rig, added - set the hard current limit (raw ADC 0-1023, 1023 = disabled); use 'A' command to save to EEPROM
-        temp = CONFIG_SERIAL.parseInt();
-        currentLimitRaw = constrain(temp, 0, 1023);
-        CONFIG_SERIAL.println(currentLimitRaw);
-        break;
-#endif // end of motor current
       case 'W': //milos, added - configure PWM settings and frequency
 #ifdef USE_EEPROM
         ffb_temp = CONFIG_SERIAL.parseInt();
@@ -401,6 +342,7 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
             break;
         }
 #else // if no xy shifter
+        CONFIG_SERIAL.read(); // dustin's rig, fixed - consume the subcommand char: it used to stay in the RX buffer and then executed as a NEW command (e.g. "HG" left a dangling 'G' = set rotation degrees, with parseInt timing out to 0 -> constrained to 30 deg!)
         CONFIG_SERIAL.println(0);
 #endif // end of xy shifter
         break;
@@ -475,6 +417,7 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
             break;
         }
 #else // if autocalib
+        CONFIG_SERIAL.read(); // dustin's rig, fixed - same as 'H' above: a dangling 'R' from "YR" used to trigger the 'R' command = motor calibration run!
         CONFIG_SERIAL.println(0);
 #endif // end of autocalib
         break;

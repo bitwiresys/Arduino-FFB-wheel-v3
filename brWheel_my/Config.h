@@ -38,35 +38,10 @@
 // dustin's rig, added - both gated behind their own option letter (like everything else above)
 // instead of being baked into every single variant, since most rigs don't have either one.
 #define USE_AXIS_TWEAKS  // milos-style, added - per-axis invert/disable via serial commands 'I'/'D' (see SendAxisReport()) // dustin's rig: enabled
-// dustin's rig, added - NTC 100K motor thermistor (BTS7960 driven motor) over-temperature FFB
-// cutoff. Gated behind its own option letter (not every rig has a thermistor wired up).
-// Toggle must live here (before the button-pin block below) - the BUTTON1-vs-NTC_PIN
-// conflict check there is a preprocessor #if, which only sees defines already seen by
-// this point in the file, not ones further down.
-#define USE_MOTOR_NTC // dustin's rig: enabled
-#ifdef USE_MOTOR_NTC
-#define NTC_PIN       A4 // free analog pin on this build (button1/A4 unused)
-#endif
-// dustin's rig, added - live motor current readout via the BTS7960 module's own IS pin
-// (current-mirror output through the module's onboard sense resistor). D12 is normally
-// BUTTON3 on this pinout (see the button re-map block below) - repurposed here since this
-// rig doesn't have a physical button wired to it. D12 = ADC9 on 32u4, analogRead() works
-// on it directly like any other analog-capable pin. Same ordering requirement as above.
-#define USE_MOTOR_CURRENT // dustin's rig: enabled
-#ifdef USE_MOTOR_CURRENT
-#define MOTOR_CURRENT_PIN 12
-// BTS7960 datasheet current-mirror ratio (I_load / I_IS), ~8500 typical but varies by
-// batch (7500-9500 per Infineon's own datasheet spread). MOTOR_CURRENT_SENSE_OHMS is the
-// sense resistor the breakout module puts across IS-to-GND to turn that mirrored current
-// into a voltage - 1000 ohm is the most common value on these 43A clone modules, but it's
-// not guaranteed. If readings look off by a roughly constant factor, adjust
-// MOTOR_CURRENT_SENSE_OHMS (rather than the mirror ratio) to match the actual module.
-#define MOTOR_CURRENT_MIRROR_RATIO 8500.0
-#define MOTOR_CURRENT_SENSE_OHMS   1000.0
-#endif
 //#define USE_MCP4725      // milos, 12bit DAC (0-5V), uncomment to enable output of FFB signal as 2ch DAC voltage output
 //#define USE_ANALOGFFBAXIS // milos, uncomment to enable other than X-axis to be tied with xFFB axis (you can use analog inputs instead of digital encoders
-//#define USE_PROMICRO    // milos, uncomment if you are using Arduino ProMicro board (leave commented for Leonardo or Micro variants)
+// dustin's rig: this firmware targets Arduino Leonardo ONLY - all ProMicro/Micro board
+// variants and their pin remaps were removed for simplicity and flash savings.
 #define USE_EEPROM     // milos, uncomment to enable loading/saving settings from EEPROM (if commented out, default settings will be loaded on each powerup, one needs to reconfigure firmware defautls or use GUI configuration after each powerup)
 
 #define CALIBRATE_AT_INIT	0 // milos, was 1
@@ -78,17 +53,7 @@
 //#define	SYNC_LED_PIN		12 //milos, USB polling clock
 
 //milos, added - ffb clip LED indicator
-#define FFBCLIP_LED_PIN 13 // only for leonardo/micro
-
-#ifdef USE_PROMICRO // milos, if we use proMicro
-#ifndef USE_MCP4725 // milos, we can only use it if DAC is not using i2C pins 2,3
-#ifndef USE_ADS1015 // milos, we can only use it if ADS1015 is not using i2C pins 2,3
-#ifndef USE_AS5600 // milos, we can only use it if AS5600 is not using i2C pin 2,3
-#define FFBCLIP_LED_PIN 3 // for ProMicro if no above i2C devices
-#endif // end of as5600
-#endif // end of ads1015
-#endif // end of mcp4725
-#endif // end of promicro
+#define FFBCLIP_LED_PIN 13 // Leonardo
 
 #define ACCEL_PIN			A0
 #ifdef USE_LOAD_CELL // milos
@@ -132,18 +97,16 @@
 #define B6PORTBIT 4 // bit4
 #endif // end of shift reg
 
-#ifndef USE_PROMICRO // milos, added - for Leonardo or Micro
+// milos - Leonardo pinout
 #ifndef USE_XY_SHIFTER // milos, when no XY shifter - buttons are available on analog pins
-#if !(defined(USE_MOTOR_NTC) && NTC_PIN == A4) // dustin's rig, added - A4 is used for the motor NTC thermistor instead of button1 on this build
 #define BUTTON1 A4 // A4, used for button1 instead
 #define B1PORTBIT 1 // read bit1 of PINF
-#endif // end of ntc on A4
 #define BUTTON2 A5 // A5, used for button2 instead
 #define B2PORTBIT 0 // read bit0 of PINF
-#else // if we use xy shifter on leonardo or micro
+#else // if we use xy shifter on leonardo
 #define SHIFTER_X_PIN A4 // milos
 #define SHIFTER_Y_PIN A5 // milos
-// milos, re-map buttons 1,2 to be available for hat switch on leonardo/micro when using xy shifter
+// milos, re-map buttons 1,2 to be available for hat switch on leonardo when using xy shifter
 #ifdef USE_HATSWITCH // milos, alternate button0,4 mappings because of hat switch with xy shifter
 #define BUTTON0 5 // D5, used for button0
 #define B0PORTBIT 6 // read bit6 of PINC
@@ -156,34 +119,8 @@
 #define B2PORTBIT 6 // read bit6 of PINE
 // milos, end of button re-map
 #endif // end of xy shifter
-#if !(defined(USE_MOTOR_CURRENT) && MOTOR_CURRENT_PIN == 12) // dustin's rig, added - D12 is used for the BTS7960 IS current-sense pin instead of button3 on this build
-#define BUTTON3 12 // D12, used for button3 on leonardo/micro
+#define BUTTON3 12 // D12, used for button3 on leonardo
 #define B3PORTBIT 6 // read bit6 of PIND
-#endif // end of motor current on D12
-#else // for Pro Micro
-// milos, re-map buttons 0,4,7 when xy shifter is used to be available for hat switch on proMicro
-#ifdef USE_HATSWITCH // milos, with hat switch
-#define BUTTON0 5 // D5, used for button0
-#define B0PORTBIT 6 // read bit6 of PINC
-#define BUTTON4 4 // D4, used for button4
-#define B4PORTBIT 4 // read bit4 of PIND
-#define BUTTON7 6 // D6, used for button7
-#define B7PORTBIT 7 // read bit7 of PIND
-#endif // end of hat switch
-#define BUTTON1 14 // D14, used for button1 instead
-#define B1PORTBIT 3 // read bit3 of PINB
-#define BUTTON2 15 // D15, used for button2 instead
-#define B2PORTBIT 1 // read bit1 of PINB
-#ifndef USE_CENTERBTN // if not using center button
-#define BUTTON3 2 // D2, used for button3 instead on proMicro
-#define B3PORTBIT 1 // read bit1 of PIND
-#else // if we use center button it uses the pin D2
-#define BUTTON3 3 // D3, used for button3 instead, we have no FFB clip LED
-#define B3PORTBIT 0 // read bit0 of PIND
-#endif // end of center button
-//#define SHIFTER_X_PIN A4 // milos, they are not on proMicro pcb
-//#define SHIFTER_Y_PIN A5 // milos, they are not on proMicro pcb
-#endif // end of proMicro
 
 #ifdef USE_EXTRABTN // milos, added - allocate 2 more buttons on A2,A3 (at the cost of disabling clutch and handbrake axis)
 #define BUTTON8 A2 // A2 or bit5 of PINF
@@ -206,11 +143,7 @@
 #define PWM_PIN_U     11 // milos, up PWM pin
 #define PWM_PIN_D     5 // milos, down PWM pin
 #endif
-#ifndef USE_PROMICRO // milos, added - for Leonardo or Micro
 #define DIR_PIN       11 // milos, PWM direction pin: 0V-left (negative force), 5V-right (positive force)
-#else // for Pro Micro
-#define DIR_PIN       16 // pin16
-#endif
 
 #define ACCEL_INPUT 0
 #ifdef USE_LOAD_CELL //milos
@@ -283,19 +216,8 @@ uint8_t LC_scaling; // milos, load cell scaling factor (affects brake pressure, 
 // dustin's rig, added - per-axis invert/disable bitmasks (bit0=X/steering, bit1=Y/brake, bit2=Z/throttle, bit3=RX/clutch, bit4=RY/handbrake)
 #define PARAM_ADDR_AXIS_INVERT   0x3A
 #define PARAM_ADDR_AXIS_DISABLE 0x3B
-// dustin's rig, added - motor NTC critical shutdown threshold, raw analogRead() counts (0-1023).
-// Deliberately NOT converted to degC: doing the Beta/Steinhart-Hart math would pull in log() from
-// libm, which this build's flash budget (~1KB free on a 32u4) can't afford. Calibrate empirically
-// instead: heat the motor to the temperature you want to cut off at, read the live raw value with
-// the 'N' command, and set that as the threshold with 'N <value>'.
-#define PARAM_ADDR_NTC_THRESH    0x3C
-// dustin's rig, added - motor current hard limit, raw analogRead() counts (0-1023), same
-// sentinel convention as NTC above (1023 = no limit set / disabled). Set via the 'K'
-// command using the same raw<->mA formula as the 'J' current readout (see MOTOR_CURRENT_*
-// constants) - the control panel does that conversion, the firmware only stores raw.
-#define PARAM_ADDR_CURRENT_LIMIT 0x3D
 
-#define FIRMWARE_VERSION         0xFD // dustin's rig, bumped from 0xFC - SetDefaultEEPROMConfig() was missing the PARAM_ADDR_CURRENT_LIMIT default write entirely (fixed in Config.ino), so boards that already saw 0xFC have a garbage value stuck at that EEPROM address
+#define FIRMWARE_VERSION         0xFE // dustin's rig, bumped from 0xFD - NTC/motor-current features (and their EEPROM slots 0x3C/0x3D) removed entirely, force a clean defaults reload
 
 // dustin's rig, added - CI overwrites this with the GitHub Actions run number before compiling
 // each release (matches the numeric suffix of the "fw-build-N" release tag exactly), so the
@@ -327,7 +249,6 @@ typedef struct fwOpt { // milos, added - firmware option stuct
   boolean i = false; // averaging (of analog axis)
   boolean k = false; // combined gas and brake axis
   boolean l = false; // load cell
-  boolean m = false; // proMicro pinouts
   boolean n = false; // shift register (nano button box)
   boolean p = false; // no EEPROM
   boolean r = false; // shift register (SN74ALS166N)
@@ -372,9 +293,6 @@ void update(fwOpt *option) { // milos, added - update firmware options from pred
 #endif
 #ifdef USE_LOAD_CELL
   option->l = true;
-#endif
-#ifdef USE_PROMICRO
-  option->m = true;
 #endif
 #ifndef USE_EEPROM
   option->p = true;
@@ -459,15 +377,18 @@ u8 pwmstate; // =0b00000101; // milos, PWM settings configuration byte, bit7 is 
 u8 axisInvertMask;
 u8 axisDisableMask;
 #endif
-#ifdef USE_MOTOR_NTC
-u16 ntcThreshold; // dustin's rig, added - critical FFB-cutoff raw ADC threshold (0-1023), loaded from EEPROM (see PARAM_ADDR_NTC_THRESH). 1023 = sentinel/uncalibrated, feature stays inert (see CheckMotorNTC())
-bool ntcTripped;  // dustin's rig, added - latched overtemp state (with hysteresis, see NTC_HYSTERESIS and CheckMotorNTC())
-#define NTC_HYSTERESIS 20 // dustin's rig, added - raw ADC counts of hysteresis so FFB doesn't chatter on/off right at the threshold
-#endif
-#ifdef USE_MOTOR_CURRENT
-u16 currentLimitRaw; // dustin's rig, added - hard current cap, raw ADC (0-1023), loaded from EEPROM (see PARAM_ADDR_CURRENT_LIMIT). 1023 = sentinel/no limit set, feature stays inert (see CheckMotorCurrentLimit())
-float currentLimitScale = 1.0; // dustin's rig, added - runtime torque multiplier (0..1), backed off when live current exceeds currentLimitRaw, recovered gradually otherwise - see CheckMotorCurrentLimit()
-#endif
+
+// dustin's rig, added - drivetrain-failure watchdog ("срыв руля"): if the firmware keeps
+// commanding strong torque but the encoder does not move AT ALL, the gear/coupling between
+// motor and wheel shaft has most likely sheared - the motor is spinning free. Latch a fault
+// and hard-cut FFB until the board is reset/power-cycled (runtime state, not in EEPROM).
+// Queried by the control panel with the 'T' command. Not behind an option letter - it's a
+// pure-software safety net that costs a few dozen bytes.
+boolean ffbFault = false;     // latched until reboot
+u16 ffbStallCnt = 0;          // consecutive FFB cycles of "high torque + frozen encoder"
+#define STALL_TORQUE_MIN(m)  ((s32)((m) >> 1)) // trip threshold: |command| > 50% of max torque
+#define STALL_SPD_EPS        0.05              // encoder counts per FFB cycle considered "not moving"
+#define STALL_TRIP_CYCLES    1500              // 3 s at the 500 Hz FFB rate (CONTROL_PERIOD = 2 ms)
 
 // milos, changed these from f32 to u8 (loaded from EEPROM)
 u8 configGeneralGain;  // = 1.0f;  // was 1.0f
@@ -674,25 +595,19 @@ uint32_t decodeXYshifter (uint32_t inbits, xysh *s) {
       bitSet(gears, 23); // still set 8th gear
     }
   }
-  // milos, on leonardo/micro when both xy shifter and hat switch are used pins D5,D6,D7 are remaped to buttons 0,1,2
+  // milos, on leonardo when both xy shifter and hat switch are used pins D5,D6,D7 are remaped to buttons 0,1,2
   // milos, so we need to stop reading these pins twice as normal buttons
   // milos, pins D5,D6,D7 are taken care of by bit mask at bit4,bit5,bit7 in xy shifter decoding function bellow
-  uint32_t bitMask = 0b11110000000011111111111111101111; // milos, default bit mask, bit4=0 for reverse gear button, bits20-27 are 0 for gear buttons to be inserted
-  //#ifdef USE_XY_SHIFTER // milos, with xy shifter
+  uint32_t bitMask; // bit4=0 for reverse gear button, bits20-27 are 0 for gear buttons to be inserted
 #ifdef USE_HATSWITCH // milos, with hat switch
-#ifndef USE_PROMICRO // milos, only for leonardo/micro
 #ifndef USE_SHIFT_REGISTER // milos, for shift register we need default bitmask
   bitMask = 0b11110000000011111111111101001111; // milos, modifyed bit mask not to show duplicate buttons0,1,3
-#endif // end of shift register
-#else // milos, for proMicro
+#else
   bitMask = 0b11110000000011111111111111101111; // milos, default bit mask
-#endif // end of proMicro
+#endif // end of shift register
 #else // milos, no hat switch with xy shifter
-#ifndef USE_PROMICRO // milos, only for leonardo/micro
   bitMask = 0b11110000000011111111111110001111; // milos, modifyed bit mask not to show duplicate buttons0,1,2
-#endif // end of proMicro
 #endif // end of hat switch
-  //#endif // end of xy shifter
 
   return ((inbits & bitMask) | (gears << 4)); // milos, gears are shifted to the left by 4 bits to skip updating hat switch, reverse gear is at bit4 (1st bit of buttons)
 }
