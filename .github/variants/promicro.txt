@@ -1,4 +1,4 @@
-# One letter-combo per line for arduino:avr:leonardo builds.
+# One letter-combo per line for arduino:avr:micro (ProMicro) builds.
 # "-" means the base build with no optional letters.
 # See brWheel_my/docs for what each letter enables.
 # Lines here MUST fit in the ATmega32U4's 32KB flash - CI verifies this on every push.
@@ -12,18 +12,22 @@ acx
 ahxnl
 ax
 azhxn
+bcdwuxg
+bcdwux
 bcdwxg
+bcdwx
+bdwuxg
+bdwux
 bdxg
-bx
 bxg
+bx
 cdwhx
 chfxn
 chfxnr
 chtx
 cx
 dkx
-dwov
-dwovq
+dwfx
 dwxn
 dx
 fx
@@ -40,6 +44,7 @@ xg
 xl
 xnr
 zfx
+zhtx
 zhxn
 zhxnl
 zx

@@ -61,6 +61,10 @@ void SetDefaultEEPROMConfig() { // milos - store default firmware settings in EE
   v8 = 0; // dustin's rig, added - no axes inverted/disabled by default
   SetParam(PARAM_ADDR_AXIS_INVERT, v8);
   SetParam(PARAM_ADDR_AXIS_DISABLE, v8);
+  v16 = 1023; // dustin's rig, added - placeholder NTC threshold (max = effectively disabled); MUST be calibrated with the 'N' command for your actual thermistor/resistor pair before it does anything useful
+  SetParam(PARAM_ADDR_NTC_THRESH, v16);
+  v16 = 1023; // dustin's rig, added - placeholder current limit (max = no limit); set with the 'K' command
+  SetParam(PARAM_ADDR_CURRENT_LIMIT, v16);
 #ifndef USE_AS5600
   v32 = 2400; // milos, default CPR value for optical encoder (this is for 600PPR)
 #else
@@ -131,6 +135,12 @@ void LoadEEPROMConfig () { //milos, added - updates all v8 parameters from EEPRO
   GetParam(PARAM_ADDR_AXIS_INVERT, axisInvertMask); // dustin's rig, added
   GetParam(PARAM_ADDR_AXIS_DISABLE, axisDisableMask); // dustin's rig, added
 #endif
+#ifdef USE_MOTOR_NTC
+  GetParam(PARAM_ADDR_NTC_THRESH, ntcThreshold); // dustin's rig, added
+#endif
+#ifdef USE_MOTOR_CURRENT
+  GetParam(PARAM_ADDR_CURRENT_LIMIT, currentLimitRaw); // dustin's rig, added
+#endif
   GetParam(PARAM_ADDR_MIN_TORQ, MM_MIN_MOTOR_TORQUE);
   GetParam(PARAM_ADDR_MAX_TORQ, MM_MAX_MOTOR_TORQUE);
   GetParam(PARAM_ADDR_MAX_DAC, MAX_DAC);
@@ -188,6 +198,12 @@ void SaveEEPROMConfig () { //milos, added - saves all v8 parameters in EEPROM
   SetParam(PARAM_ADDR_AXIS_INVERT, axisInvertMask); // dustin's rig, added
   SetParam(PARAM_ADDR_AXIS_DISABLE, axisDisableMask); // dustin's rig, added
 #endif
+#ifdef USE_MOTOR_NTC
+  SetParam(PARAM_ADDR_NTC_THRESH, ntcThreshold); // dustin's rig, added
+#endif
+#ifdef USE_MOTOR_CURRENT
+  SetParam(PARAM_ADDR_CURRENT_LIMIT, currentLimitRaw); // dustin's rig, added
+#endif
   SetParam(PARAM_ADDR_MIN_TORQ, MM_MIN_MOTOR_TORQUE);
   SetParam(PARAM_ADDR_MAX_TORQ, MM_MAX_MOTOR_TORQUE);
   SetParam(PARAM_ADDR_MAX_DAC, MAX_DAC);
@@ -222,5 +238,33 @@ void ClearEEPROMConfig() { //milos, added - clears EEPROM (1KB on ATmega32U4)
 #endif
 }
 
-// dustin's rig, removed - dead code: SetCPR() (never called, and its wheelAngle math used
-// newCpr instead of the encoder position) and myMap() (never called anywhere).
+int32_t SetCPR(uint32_t newCpr, int32_t encRead) { // milos, added - update encoder CPR (for both optical and magnetic), returns new encoder possition
+  int32_t temp1;
+  newCpr = constrain(newCpr, 4, 600000); // milos, extended to 32bit (100000*6)
+#ifdef USE_AS5600 // milos, with AS5600
+  temp1 = encRead - ROTATION_MID; // milos
+#else // if no as5600
+#ifdef USE_QUADRATURE_ENCODER
+  temp1 = encRead - ROTATION_MID + brWheelFFB.offset; // milos
+#endif // end of quad enc
+#endif // end of as5600
+  float wheelAngle = float(newCpr) * float(ROTATION_DEG) / float(ROTATION_MAX); // milos, current wheel angle
+  CPR = newCpr; // milos, update CPR
+  ROTATION_MAX = int32_t(float(CPR) / 360.0 * float(ROTATION_DEG)); // milos, updated
+  ROTATION_MID = ROTATION_MAX >> 1; // milos, updated, divide by 2
+  temp1 = int32_t(wheelAngle * float(ROTATION_MAX) / float(ROTATION_DEG)); // milos, here we recover the old wheel angle
+#ifdef USE_AS5600 // milos, with AS5600
+  temp1 += ROTATION_MID; // milos
+#else // if no as5600
+#ifdef USE_QUADRATURE_ENCODER
+  temp1 += ROTATION_MID - brWheelFFB.offset; // milos
+#endif // end of quad enc
+#endif // end of as5600
+  return temp1;
+}
+
+// arduino's map function works only up to range of int16_t variable (-32k,32k)
+// I wrote mine that can handle 32bit variables or int32_t
+int32_t myMap (int32_t value, int32_t x0, int32_t x1, int32_t y0, int32_t y1) {
+  return (y0 + value * (y1 - y0) / (x1 - x0));
+}

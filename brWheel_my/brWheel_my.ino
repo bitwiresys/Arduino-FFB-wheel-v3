@@ -162,6 +162,48 @@ void SendAxisReport(s32 x, s32 y, s32 z, s32 rx, s32 ry, u32 buttons) {
   SendInputReport(x, y, z, rx, ry, buttons);
 }
 
+#ifdef USE_MOTOR_NTC
+// dustin's rig, added - polls the motor NTC thermistor (100k, on NTC_PIN) and latches ntcTripped with hysteresis.
+// Assumes the usual wiring: NTC between 5V and NTC_PIN, fixed resistor from NTC_PIN to GND - raw ADC reading
+// rises as the motor heats up (NTC resistance falls). If your wiring is the other way around, the reading
+// will fall with heat instead - swap the two comparisons below if so.
+void CheckMotorNTC() {
+  if (ntcThreshold >= 1023) { ntcTripped = false; return; } // dustin's rig, added - 1023 is the "not calibrated yet" sentinel (also what an unconnected/floating NTC_PIN tends to read due to AVR ADC channel-to-channel charge leakage) - stay fully inert until the 'M' command sets a real threshold
+  int raw = analogRead(NTC_PIN);
+  if (raw >= (int)ntcThreshold) ntcTripped = true;
+  else if (raw <= (int)ntcThreshold - NTC_HYSTERESIS) ntcTripped = false; // milos-style note: signed subtraction, avoids unsigned underflow if threshold is set below the hysteresis margin
+}
+#endif
+
+#ifdef USE_MOTOR_CURRENT
+// dustin's rig, added - reads the BTS7960 IS pin and converts to milliamps of actual motor
+// current, using the fixed calibration constants in Config.h (no in-firmware calibration,
+// same philosophy as the NTC threshold - see MOTOR_CURRENT_MIRROR_RATIO/SENSE_OHMS comments).
+long ReadMotorCurrentMA() {
+  int raw = analogRead(MOTOR_CURRENT_PIN);
+  // I_load(A) = (raw/1023 * 5V) / R_sense * mirror_ratio, rearranged to keep everything in
+  // one long-integer-friendly expression: mA = raw * 5000 * ratio / (1023 * R_sense)
+  return (long)((float)raw * 5000.0 * MOTOR_CURRENT_MIRROR_RATIO / (1023.0 * MOTOR_CURRENT_SENSE_OHMS));
+}
+
+// dustin's rig, added - hard current cap: never let commanded torque produce more than
+// currentLimitRaw worth of measured current. Called every FFB cycle (500Hz, see ffb_pro.ino)
+// rather than piggybacking on the slower 100Hz serial-check timer used for the NTC check -
+// current can spike fast, this needs to react fast. Backs off in big steps (fast, protective),
+// recovers in small steps (slow, avoids hunting/oscillating right at the limit).
+void CheckMotorCurrentLimit() {
+  if (currentLimitRaw >= 1023) { currentLimitScale = 1.0; return; } // sentinel: no limit set, stay fully open
+  int raw = analogRead(MOTOR_CURRENT_PIN);
+  if (raw >= (int)currentLimitRaw) {
+    currentLimitScale -= 0.08;
+    if (currentLimitScale < 0.0) currentLimitScale = 0.0;
+  } else if (currentLimitScale < 1.0) {
+    currentLimitScale += 0.01;
+    if (currentLimitScale > 1.0) currentLimitScale = 1.0;
+  }
+}
+#endif
+
 //--------------------------------------------------------------------------------------------------------
 //-------------------------------------------- SETUP -----------------------------------------------------
 //--------------------------------------------------------------------------------------------------------
@@ -191,6 +233,9 @@ void setup() {
   //pinMode(MISO,INPUT); //12,INPUT);
   //pinMode(MOSI,INPUT); //13,INPUT);
 
+#ifdef USE_MOTOR_NTC
+  ntcTripped = false; // dustin's rig, added - live runtime state, not persisted in EEPROM
+#endif
 #ifdef USE_EEPROM
   SetEEPROMConfig(); // milos, check firmware version from EEPROM (if any) and load defaults if required
   LoadEEPROMConfig(); // milos, read firmware setings from EEPROM and update current firmware settings
@@ -227,6 +272,12 @@ void setup() {
 #ifdef USE_AXIS_TWEAKS
   axisInvertMask = 0; // dustin's rig, added
   axisDisableMask = 0; // dustin's rig, added
+#endif
+#ifdef USE_MOTOR_NTC
+  ntcThreshold = 1023; // dustin's rig, added - placeholder (effectively disabled) until calibrated with the 'N' command
+#endif
+#ifdef USE_MOTOR_CURRENT
+  currentLimitRaw = 1023; // dustin's rig, added - placeholder (effectively disabled/no limit) until set with the 'K' command
 #endif
 #ifdef USE_AUTOCALIB //milos, reset limits for autocalibration of pedals
   accel.min = Z_AXIS_LOG_MAX;
@@ -468,13 +519,24 @@ void loop() {
 #else //if no ads1015
 #ifdef AVG_INPUTS // milos, we do not average h-shifter axis, only pedal axis
         accel.val = analog_inputs[ACCEL_INPUT];
-        // milos, for leonardo we can avg pedal inputs and also have h-shifter axis
+#ifdef USE_PROMICRO
+#ifndef USE_XY_SHIFTER
+        clutch.val = analog_inputs[CLUTCH_INPUT];
+        hbrake.val = analog_inputs[HBRAKE_INPUT];
+#else // milos, if we use h-shifter on proMicro with avg inputs
+        clutch.val = 0;
+        hbrake.val = 0;
+        shifter.x = analogRead(CLUTCH_PIN); // milos
+        shifter.y = analogRead(HBRAKE_PIN); // milos
+#endif // end of xy shifter
+#else // for leonardo we can avg pedal inputs and also have h-shifter axis
         clutch.val = analog_inputs[CLUTCH_INPUT];
         hbrake.val = analog_inputs[HBRAKE_INPUT];
 #ifdef USE_XY_SHIFTER
         shifter.x = analogRead(SHIFTER_X_PIN); // milos
         shifter.y = analogRead(SHIFTER_Y_PIN); // milos
 #endif // end of h-shifter
+#endif // end of proMicro
 #else // if no avg
 #ifndef USE_SPLITAXIS
         accel.val = analogRead(ACCEL_PIN); // milos, Z axis
@@ -500,6 +562,7 @@ void loop() {
         }
 #endif // end of quad encoder        
 #endif // end of splitaxis
+#ifndef USE_PROMICRO // milos, for Leonardo and Micro
 #ifndef USE_EXTRABTN // milos, we can have clutch and hbrake only when not using extra buttons
         clutch.val = analogRead(CLUTCH_PIN); // milos, RX axis
         hbrake.val = analogRead(HBRAKE_PIN); // milos, RY axis
@@ -511,6 +574,26 @@ void loop() {
         shifter.x = analogRead(SHIFTER_X_PIN); // milos
         shifter.y = analogRead(SHIFTER_Y_PIN); // milos
 #endif // end of xy shifter
+#else // if we use proMicro
+#ifdef USE_XY_SHIFTER // milos, compromize - for proMicro with XY shifter, we can't have clutch and handbrake
+        clutch.val = 0; // milos, RX axis
+        hbrake.val = 0; // milos, RY axis
+        shifter.x = analogRead(CLUTCH_PIN); // milos, use clutch analog input instead
+        shifter.y = analogRead(HBRAKE_PIN); // milos, use handbrake analog input instead
+#else // for proMicro, when no XY shifter
+#ifndef USE_EXTRABTN // milos, only available if not using extra buttons
+        clutch.val = analogRead(CLUTCH_PIN); // milos, RX axis
+        hbrake.val = analogRead(HBRAKE_PIN); // milos, RY axis
+#else // if using extra buttons
+#ifndef USE_LOAD_CELL
+        clutch.val = 0; // milos, RX axis unavailable when no lc
+#else // if no load cell
+        clutch.val = analogRead(CLUTCH_PIN); // milos, RX axis is available if we use lc
+#endif // end of use lc
+        hbrake.val = 0; // milos, RY axis is allways unavailable
+#endif // end of extra button
+#endif // end of xy shifter
+#endif // end proMicro
 #endif // end of avg
 #endif // end of ads
 
@@ -614,6 +697,9 @@ void loop() {
 #ifdef USE_CONFIGCDC
         if (timeDiffConfigSerial >= CONFIG_SERIAL_PERIOD) {
           configCDC(); // milos, configure firmware with virtual serial port
+#ifdef USE_MOTOR_NTC
+          CheckMotorNTC(); // dustin's rig, added - piggyback on the existing 100Hz serial-check timer, thermal time constants are always much slower than this
+#endif
           last_ConfigSerial = now_micros;
         }
 #endif // end of use config cdc

@@ -133,8 +133,10 @@ void InitInputs() {
     pinMode(analog_inputs_pins[i], INPUT);
   }
 #ifdef USE_XY_SHIFTER
+#ifndef USE_PROMICRO
   pinMode(SHIFTER_X_PIN, INPUT);
   pinMode(SHIFTER_Y_PIN, INPUT);
+#endif
 #endif
 #ifdef USE_SHIFT_REGISTER
   InitShiftRegister();
@@ -193,9 +195,19 @@ void InitShiftRegister() {
 #else // no shift reg
 void InitButtons() { // milos, added - if not using shift register, allocate some free pins for buttons
   pinMode(BUTTON0, INPUT_PULLUP);
+#ifdef BUTTON1 // dustin's rig, added - undefined when A4 is used for the motor NTC thermistor instead
   pinMode(BUTTON1, INPUT_PULLUP);
+#endif
   pinMode(BUTTON2, INPUT_PULLUP);
-  pinMode(BUTTON3, INPUT_PULLUP); // for Leonardo we can use button3 even with z-index
+#ifndef USE_PROMICRO
+#ifdef BUTTON3 // dustin's rig, added - undefined when D12 is used for the motor current sense pin instead
+  pinMode(BUTTON3, INPUT_PULLUP); // for Leonardo and Micro, we can use button3 even with z-index
+#endif
+#else // if use proMicro
+#ifndef USE_ZINDEX
+  pinMode(BUTTON3, INPUT_PULLUP); // on proMicro only available if we do not use z-index
+#endif // end of z-index
+#endif // end of proMicro
 #ifndef USE_BTNMATRIX
   pinMode(BUTTON4, INPUT_PULLUP);
   pinMode(BUTTON5, INPUT_PULLUP);
@@ -318,7 +330,36 @@ u32 readInputButtons() {
   bitWrite(buttons, 0, readSingleButton(0)); // milos, first 0 is button bit in HID, second 0 in brackets is associated to arduino pin - see config.h)
   bitWrite(buttons, 1, readSingleButton(1));
   bitWrite(buttons, 2, readSingleButton(2));
-  bitWrite(buttons, 3, readSingleButton(3)); // milos, on Leonardo button3 is on D12, available even with z-index and i2C devices
+  //------------- milos, start button3 case
+#ifdef USE_PROMICRO // milos, for proMicro button3 on D3 is available only if not using zindex and i2C devices
+#ifdef USE_ZINDEX
+  // milos, we can not have button3 for proMicro when we use z-index encoder
+  bitWrite(buttons, 3, 0);
+#endif // end of z-index
+#ifdef USE_AS5600
+  // milos, we can not have button3 for proMicro when we use AS5600 (i2C)
+  bitWrite(buttons, 3, 0);
+#endif // end of as5600
+#ifdef USE_ADS1015
+  // milos, we can not have button3 for proMicro when we use ADS1015 (i2C)
+  bitWrite(buttons, 3, 0);
+#endif // end of ads1015
+#ifdef USE_MCP4725
+  // milos, we can not have button3 for proMicro when we use MCP4725 (i2C)
+  bitWrite(buttons, 3, 0);
+#endif // end of mcp4725
+#ifndef USE_ZINDEX
+#ifndef USE_AS5600
+#ifndef USE_ADS1015
+#ifndef USE_MCP4725
+  bitWrite(buttons, 3, readSingleButton(3));   // milos, we can have button3 on D3 on proMicro only if nothing is using pin D3
+#endif // end of z-index
+#endif // end of as5600
+#endif // end of ads1015
+#endif // end of mcp4725
+#else // milos, if we use Leonardo or Micro we can have button3 on D12 even with z-index and i2C devices
+  bitWrite(buttons, 3, readSingleButton(3));
+#endif // end of pro micro
   bitWrite(buttons, 4, readSingleButton(4));
   bitWrite(buttons, 5, readSingleButton(5));
   bitWrite(buttons, 6, readSingleButton(6));
@@ -329,8 +370,15 @@ u32 readInputButtons() {
 #else // with 2ffb axis, D5 is used by timer3 for PWM output
   bitWrite(buttons, 7, 0); // milos, we don't have button7
 #endif // end of 2 ffb axis
-#else // milos, with as5600 on leonardo
-  bitWrite(buttons, 7, readSingleButton(7)); // milos, button7 is on pin D5 for leonardo
+#else // milos, if we use mag encoder and hat switch on proMicro
+#ifdef USE_PROMICRO
+#ifdef USE_HATSWITCH
+  bitWrite(buttons, 3, readSingleButton(7)); // milos, we need to remap D6 to button3 in order for hat switch left to work
+  bitWrite(buttons, 7, 0); // milos, we don't have button7 (pin D5) in that case
+#endif // end of hat swich
+#else // for leonardo/micro with hat switch
+  bitWrite(buttons, 7, readSingleButton(7)); // milos, button7 is on pin D5 for leonardo/micro with hat switch
+#endif // end of proMicro
 #endif // end of as5600
 #else // milos, with load cell
   bitWrite(buttons, 7, 0); // milos, button7 (pin D5) is unavailable on all boards if we use load cell
@@ -372,13 +420,17 @@ u32 readInputButtons() {
 bool readSingleButton (uint8_t i) { // milos, added
   bool temp;
   if (i == 0) {
-    temp = !bitRead(digitalReadFast(BUTTON0), B0PORTBIT); // milos, read bit4 from PINF A3 (or bit4 from PIND D4 when no LC, or bit6 from PINC D5 when XY shifter) into buttons bit0
+    temp = !bitRead(digitalReadFast(BUTTON0), B0PORTBIT); // milos, read bit4 from PINF A3 (or bit4 from PIND D4 when no LC, or bit6 from PINC D5 on leonardo/micro when XY shifter) into buttons bit0
+#ifdef BUTTON1 // dustin's rig, added - undefined when A4 is used for the motor NTC thermistor instead
   } else if (i == 1) {
-    temp = !bitRead(digitalReadFast(BUTTON1), B1PORTBIT); // milos, read bit1 from PINF A4 into buttons bit1
+    temp = !bitRead(digitalReadFast(BUTTON1), B1PORTBIT); // milos, read bit1 from PINF A4 (or bit3 from PINB D14 on ProMicro) into buttons bit1
+#endif
   } else if (i == 2) {
-    temp = !bitRead(digitalReadFast(BUTTON2), B2PORTBIT); // milos, read bit0 from PINF A5 into buttons bit2
+    temp = !bitRead(digitalReadFast(BUTTON2), B2PORTBIT); // milos, read bit0 from PINF A5 (or bit1 from PINB D15 on ProMicro) into buttons bit2
+#ifdef BUTTON3 // dustin's rig, added - undefined when D12 is used for the motor current sense pin instead
   } else if (i == 3) {
     temp = !bitRead(digitalReadFast(BUTTON3), B3PORTBIT); // milos, read bit6 from PIND D12 into buttons bit3
+#endif
   } else if (i == 4) {
     temp = !bitRead(digitalReadFast(BUTTON4), B4PORTBIT); // milos, read bit7 from PIND D6 into buttons bit4
   } else if (i == 5) {

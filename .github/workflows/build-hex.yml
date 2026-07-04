@@ -72,8 +72,8 @@ jobs:
           name: "Firmware build ${{ github.run_number }}"
           body: |
             Automatic build from commit ${{ github.sha }}.
-            Contains .hex files for every supported hardware combination on Arduino
-            Leonardo (see `.github/variants/leonardo.txt` for the full list),
-            plus `manifest.json` describing what each file enables.
+            Contains .hex files for every supported board/hardware combination
+            (see `.github/variants/leonardo.txt` and `.github/variants/promicro.txt`
+            for the full list), plus `manifest.json` describing what each file enables.
           files: ${{ env.ZIP_PATH }}
           generate_release_notes: false
