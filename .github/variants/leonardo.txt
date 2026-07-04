@@ -2,44 +2,18 @@
 # "-" means the base build with no optional letters.
 # See brWheel_my/docs for what each letter enables.
 # Lines here MUST fit in the ATmega32U4's 32KB flash - CI verifies this on every push.
+#
+# Pruned down from ~40 combinatorial entries to one build per genuinely distinct
+# hardware setup. Per-axis invert/disable ('v') is no longer a letter at all - it's
+# a software-only feature with no hardware dependency, always compiled in now, so it
+# no longer needs to double every combo below.
 -
-abx
-acdwhx
-achexn
-achx
-achxn
-acx
-ahxnl
-ax
-azhxn
-bcdwxg
-bdxg
-bx
-bxg
-cdwhx
-chfxn
-chfxnr
-chtx
-cx
-dkx
 dw
-dwv
-dwxn
-dx
-fx
-htx
-hxl
-hxng
-hxnl
-hxnr
-ix
-kx
-sx
-x
+dwh
+dwn
+dws
+f
+l
+t
+bg
 xg
-xl
-xnr
-zfx
-zhxn
-zhxnl
-zx

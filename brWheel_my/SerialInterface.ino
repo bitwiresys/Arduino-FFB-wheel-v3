@@ -87,12 +87,10 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
         CONFIG_SERIAL.print(CPR); //milos, send CPR as parameter
         CONFIG_SERIAL.print(' ');
         CONFIG_SERIAL.print(pwmstate, DEC); //milos, send pwmstate byte in decimal form
-#ifdef USE_AXIS_TWEAKS
         CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(axisInvertMask, DEC); // dustin's rig, added
+        CONFIG_SERIAL.print(axisInvertMask, DEC); // dustin's rig, added - always present now (see USE_AXIS_TWEAKS removal note)
         CONFIG_SERIAL.print(' ');
         CONFIG_SERIAL.print(axisDisableMask, DEC); // dustin's rig, added
-#endif
         CONFIG_SERIAL.println();
         break;
       case 'V':
@@ -159,9 +157,7 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
 #ifndef USE_EEPROM
         CONFIG_SERIAL.print("p");
 #endif
-#ifdef USE_AXIS_TWEAKS
-        CONFIG_SERIAL.print("v"); // dustin's rig, added - was missing from the V reply, GUI firmware-update matching needs every active letter reported
-#endif
+        // no 'v' letter anymore - axis invert/disable is always compiled in, not a build option
         CONFIG_SERIAL.print("\r\n");
         break;
       case 'X': // dustin's rig, added - CI-injected build number (see FW_BUILD_ID in Config.h), for the control panel to compare against the latest GitHub release
@@ -249,7 +245,6 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
         //CONFIG_SERIAL.println(1);
         //SetParam(PARAM_ADDR_DSK_EFFC, effstate); // milos, update EEPROM
         break;
-#ifdef USE_AXIS_TWEAKS
       case 'I': // dustin's rig, added - invert axes: bit0=X(steering),bit1=Y(brake),bit2=Z(throttle),bit3=RX(clutch),bit4=RY(handbrake); use 'A' command to save to EEPROM
         ffb_temp = CONFIG_SERIAL.parseInt();
         axisInvertMask = constrain(ffb_temp, 0, 31);
@@ -260,7 +255,6 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
         axisDisableMask = constrain(ffb_temp, 0, 31);
         CONFIG_SERIAL.println(axisDisableMask, BIN);
         break;
-#endif // end of axis tweaks
       case 'W': //milos, added - configure PWM settings and frequency
 #ifdef USE_EEPROM
         ffb_temp = CONFIG_SERIAL.parseInt();

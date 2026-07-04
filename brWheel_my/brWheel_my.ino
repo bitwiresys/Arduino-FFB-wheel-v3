@@ -152,13 +152,11 @@ AS5600L as5600y(0x36); // milos, we need 2nd instance of the class because cumul
 // the HID report goes out over USB, so it works no matter which build-time input path produced these 5 values.
 // bit0=X(steering), bit1=Y(brake), bit2=Z(throttle), bit3=RX(clutch), bit4=RY(handbrake)
 void SendAxisReport(s32 x, s32 y, s32 z, s32 rx, s32 ry, u32 buttons) {
-#ifdef USE_AXIS_TWEAKS
   if (bitRead(axisDisableMask, 0)) x = MID_REPORT_X + 1; else if (bitRead(axisInvertMask, 0)) x = X_AXIS_PHYS_MAX - x;
   if (bitRead(axisDisableMask, 1)) y = 0; else if (bitRead(axisInvertMask, 1)) y = Y_AXIS_PHYS_MAX - y;
   if (bitRead(axisDisableMask, 2)) z = 0; else if (bitRead(axisInvertMask, 2)) z = Z_AXIS_PHYS_MAX - z;
   if (bitRead(axisDisableMask, 3)) rx = 0; else if (bitRead(axisInvertMask, 3)) rx = RX_AXIS_PHYS_MAX - rx;
   if (bitRead(axisDisableMask, 4)) ry = 0; else if (bitRead(axisInvertMask, 4)) ry = RY_AXIS_PHYS_MAX - ry;
-#endif
   SendInputReport(x, y, z, rx, ry, buttons);
 }
 
@@ -224,10 +222,8 @@ void setup() {
 #endif // end of mcp4725
   MM_MIN_MOTOR_TORQUE = 0;
   minTorquePP = 0.0;
-#ifdef USE_AXIS_TWEAKS
   axisInvertMask = 0; // dustin's rig, added
   axisDisableMask = 0; // dustin's rig, added
-#endif
 #ifdef USE_AUTOCALIB //milos, reset limits for autocalibration of pedals
   accel.min = Z_AXIS_LOG_MAX;
   accel.max = 0;

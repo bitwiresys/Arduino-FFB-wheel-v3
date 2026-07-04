@@ -127,10 +127,8 @@ void LoadEEPROMConfig () { //milos, added - updates all v8 parameters from EEPRO
   GetParam(PARAM_ADDR_STP_GAIN, configStopGain);
   GetParam(PARAM_ADDR_BRK_PRES, LC_scaling);
   GetParam(PARAM_ADDR_DSK_EFFC, effstate);
-#ifdef USE_AXIS_TWEAKS
   GetParam(PARAM_ADDR_AXIS_INVERT, axisInvertMask); // dustin's rig, added
   GetParam(PARAM_ADDR_AXIS_DISABLE, axisDisableMask); // dustin's rig, added
-#endif
   GetParam(PARAM_ADDR_MIN_TORQ, MM_MIN_MOTOR_TORQUE);
   GetParam(PARAM_ADDR_MAX_TORQ, MM_MAX_MOTOR_TORQUE);
   GetParam(PARAM_ADDR_MAX_DAC, MAX_DAC);
@@ -184,10 +182,8 @@ void SaveEEPROMConfig () { //milos, added - saves all v8 parameters in EEPROM
   SetParam(PARAM_ADDR_STP_GAIN, configStopGain);
   SetParam(PARAM_ADDR_BRK_PRES, LC_scaling);
   SetParam(PARAM_ADDR_DSK_EFFC, effstate);
-#ifdef USE_AXIS_TWEAKS
   SetParam(PARAM_ADDR_AXIS_INVERT, axisInvertMask); // dustin's rig, added
   SetParam(PARAM_ADDR_AXIS_DISABLE, axisDisableMask); // dustin's rig, added
-#endif
   SetParam(PARAM_ADDR_MIN_TORQ, MM_MIN_MOTOR_TORQUE);
   SetParam(PARAM_ADDR_MAX_TORQ, MM_MAX_MOTOR_TORQUE);
   SetParam(PARAM_ADDR_MAX_DAC, MAX_DAC);

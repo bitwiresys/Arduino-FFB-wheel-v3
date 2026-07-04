@@ -35,9 +35,9 @@
 //#define USE_SPLITAXIS   // milos, uncomment to split Z-axis into two combined gas and brake axis (only available if Y-axis is not used by AS5600 or loadcell)
 //#define USE_CENTERBTN    // milos, uncomment to assign digital input pin D2 (or TX) for hardware wheel recenter to 0deg (caution, can only be used if quad encoder usage is commented out)
 //#define USE_EXTRABTN    // milos, uncomment to configure analog inputs on pins A2 and A3 as a digital button inputs (2 extra buttons, note that clutch and handbrake will be unavailable)
-// dustin's rig, added - both gated behind their own option letter (like everything else above)
-// instead of being baked into every single variant, since most rigs don't have either one.
-#define USE_AXIS_TWEAKS  // milos-style, added - per-axis invert/disable via serial commands 'I'/'D' (see SendAxisReport()) // dustin's rig: enabled
+// dustin's rig - per-axis invert/disable via serial commands 'I'/'D' (see SendAxisReport()) is
+// now ALWAYS compiled in (used to be gated behind its own letter 'v', doubling every variant
+// combo for a ~500-byte software-only feature with zero hardware dependency - not worth it).
 //#define USE_MCP4725      // milos, 12bit DAC (0-5V), uncomment to enable output of FFB signal as 2ch DAC voltage output
 //#define USE_ANALOGFFBAXIS // milos, uncomment to enable other than X-axis to be tied with xFFB axis (you can use analog inputs instead of digital encoders
 // dustin's rig: this firmware targets Arduino Leonardo ONLY - all ProMicro/Micro board
@@ -217,7 +217,7 @@ uint8_t LC_scaling; // milos, load cell scaling factor (affects brake pressure, 
 #define PARAM_ADDR_AXIS_INVERT   0x3A
 #define PARAM_ADDR_AXIS_DISABLE 0x3B
 
-#define FIRMWARE_VERSION         0xFE // dustin's rig, bumped from 0xFD - NTC/motor-current features (and their EEPROM slots 0x3C/0x3D) removed entirely, force a clean defaults reload
+#define FIRMWARE_VERSION         0xFF // dustin's rig, bumped from 0xFE - axis invert/disable is now always compiled in (no longer gated behind 'v'), force a clean defaults reload
 
 // dustin's rig, added - CI overwrites this with the GitHub Actions run number before compiling
 // each release (matches the numeric suffix of the "fw-build-N" release tag exactly), so the
@@ -373,10 +373,9 @@ u8 pwmstate; // =0b00000101; // milos, PWM settings configuration byte, bit7 is 
 
 // dustin's rig, added - per-axis invert/disable bitmasks, loaded from EEPROM (see PARAM_ADDR_AXIS_INVERT/DISABLE)
 // bit0=X(steering), bit1=Y(brake), bit2=Z(throttle), bit3=RX(clutch), bit4=RY(handbrake)
-#ifdef USE_AXIS_TWEAKS
+// always compiled in - see the USE_AXIS_TWEAKS removal note near the top of this file
 u8 axisInvertMask;
 u8 axisDisableMask;
-#endif
 
 // dustin's rig, added - drivetrain-failure watchdog ("срыв руля"): if the firmware keeps
 // commanding strong torque but the encoder does not move AT ALL, the gear/coupling between

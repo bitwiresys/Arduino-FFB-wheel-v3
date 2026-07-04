@@ -48,8 +48,10 @@ DEFINE_MAP: dict[str, tuple[str, str]] = {
     "u": ("USE_TCA9548", "Dual magnetic encoders via I2C multiplexer (TCA9548A)"),
     "c": ("USE_CENTERBTN", "Hardware wheel recenter button"),
     "k": ("USE_SPLITAXIS", "Gas axis split into separate gas/brake axes"),
-    "v": ("USE_AXIS_TWEAKS", "Per-axis invert/disable via serial commands"),
 }
+# Note: 'v' (per-axis invert/disable) used to be an optional letter here; it's now
+# always compiled in (see Config.h) since it's a ~500-byte software-only feature with
+# no hardware dependency - not worth doubling every variant combo for.
 
 # letters that don't map to a single #define but change other build behavior;
 # described here purely for the manifest.
