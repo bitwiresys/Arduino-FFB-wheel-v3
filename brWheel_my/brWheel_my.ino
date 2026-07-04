@@ -166,6 +166,16 @@ void SendAxisReport(s32 x, s32 y, s32 z, s32 rx, s32 ry, u32 buttons) {
 
 void setup() {
   CONFIG_SERIAL.begin(115200);
+  // dustin's rig, added - Stream::parseInt()/parseFloat() default to a 1000ms blocking
+  // timeout when the expected digits don't show up (e.g. a command byte arrives but its
+  // numeric argument gets corrupted/dropped - electrical noise from the motor driver
+  // reversing hard at the endstop is a prime suspect). Every configCDC() call can hit at
+  // most one parseInt(), but a burst of several corrupted commands in a row could stack
+  // up multiple 1s stalls back to back - full HID/FFB output freezes for the duration
+  // since it all runs from the same loop(). At 115200 baud a real argument arrives in
+  // under 1ms, so 30ms is generous headroom while capping the worst case far below
+  // anything perceptible.
+  CONFIG_SERIAL.setTimeout(30);
   //fault = false; // milos, commented out
   accel.val = 0;
   brake.val = 0;
