@@ -1,11 +1,13 @@
 # Arduino-FFB-wheel
+
 A stand-alone DirectInput USB device is recognized in Windows as a joystick with force feedback functionality, based on BRWheel by Fernando Igor in 2017.
 
 Firmware features:
-- supported Arduino boards: Leonardo, Micro, and ProMicro (ATmega32U4, 5V, 16MHz)
+- **Arduino Leonardo only** (ATmega32U4, 5V, 16MHz) - this fork dropped ProMicro/Micro support entirely for simplicity and flash headroom
 - 4 analog axis + 1 for an optical or magnetic encoder, 2 FFB axis (with multichannel PWM or DAC output)
 - for 2 FFB axis mode - 2 magnetic encoders may be used (for X and Y axis)
 - automatic or manual analog axis calibration
+- per-axis invert/disable via RS232 commands - always built in, no longer a build option
 - up to 16 buttons by 4x4 matrix or via **[button box firmware](https://github.com/ranenbg/Arduino-FFB-wheel/tree/master/tx_rw_ferrari_458_wheel_emu_16buttons)** uploaded to Arduino Nano/Uno
 - up to 24 buttons by 3x8bit shift register chips
 - analog XY H-pattern shifter (configurable to 6 or 8 gears + reverse gear, XY axis invert, reverse gear button invert)
@@ -19,11 +21,11 @@ Firmware features:
 - available DAC modes: DAC+-, DAC+dir, DAC0-50-100 (if 2 FFB axis: 1CH DAC+-, 2CH DAC+dir, 2CH DAC0-50-100)
 - load cell support for 24bit HX711 chip (for Y axis only)
 - all firmware settings are stored in EEPROM (and automatically loaded at each Arduino powerup)
-- original wheel control user interface **[Arduino FFB gui](https://github.com/ranenbg/Arduino-FFB-gui)** for an easy configuration and monitoring of all inputs/outputs 
+- companion control panel **[Arduino FFB gui v3](https://github.com/bitwiresys/Arduino-FFB-gui-v3)** - hands-free setup wizard (finds the board, detects or lets you pick its configuration, installs the matching firmware itself), live FFB/axis monitoring, and manual configuration/version flashing from Settings
 
 Detailed documentation and more information about the firmware can be found in txt files inside **[docs](brWheel_my/docs)** folder. All necessary wiring diagrams are in **[wirings](brWheel_my/wirings)** folder.
 
-This fork (`bitwiresys/Arduino-FFB-wheel-v3`) adds motor over-temperature FFB cutoff (NTC thermistor) and per-axis invert/disable, on top of everything below. It does **not** track compiled `.hex` files in git - every push is built and published automatically, see [Firmware download](#firmware-download) below for how to find the right file for your hardware.
+This fork (`bitwiresys/Arduino-FFB-wheel-v3`) is Leonardo-only and keeps per-axis invert/disable always built in. It does **not** track compiled `.hex` files in git - every push is built and published automatically, see [Firmware download](#firmware-download) below for how to find the right file for your hardware.
 
 # Firmware pinouts and wiring diagrams
 ![plot](./brWheel_my/wirings/Firmware-v250%20pinout.png)
@@ -51,7 +53,7 @@ This fork (`bitwiresys/Arduino-FFB-wheel-v3`) adds motor over-temperature FFB cu
 ![plot](./brWheel_my/wirings/XY_shifter_wiring_diagram.png)
 
 ## Firmware option description
-Due to the 32k flash memory limitation in Arduino Leonardo (ATmega32U4), each HEX file is compiled with a certain firmware option. A one-letter abbreviation for each option is placed in the firmware version string and one needs to consider carefully which one to choose. In the release, I've compiled a few of the most often-used firmware option combinations for you.
+Due to the 32k flash memory limitation in Arduino Leonardo (ATmega32U4), each HEX file is compiled with a certain firmware option. A one-letter abbreviation for each option is placed in the firmware version string and one needs to consider carefully which one to choose. The release ships a small, curated set of the most useful combinations rather than every mathematically possible combo - see [Firmware download](#firmware-download) below.
 
 Firmware versions (old), I have put some logic in firmware naming, so here is some basic explanation (if you plan to upgrade old firmware until fw-v24X please respect this):
 -  	 fw-vXX,  two digits only are test versions of new firmware features (not used anymore)
@@ -64,7 +66,7 @@ Firmware versions (new) from fw-v250, I've changed firmware naming logic such th
 - a - pedal autocalibration enabled (if no a, then manual calibration is enabled)
 - b - 2 FFB axis support with physical output (4-channel digital PWM or 2-channel analog DAC outputs available)
 -	w - magnetic encoder AS5600 support
-- d - no optical encoder support
+- d - no optical encoder support (paired with `w` for a magnetic encoder, or alone for a potentiometer X-axis)
 - z - support 3rd channel or z-index on optical encoders
 - h - enabled Hat Switch (uses first 4 buttons)
 - s - enabled external 12bit ADC for analog inputs (ADS1015 i2C)
@@ -79,34 +81,23 @@ Firmware versions (new) from fw-v250, I've changed firmware naming logic such th
 - g - support for external 12bit DAC to be used for analog FFB output (2x MCP4725 i2C)
 -	p - no EEPROM support for loading/saving firmware settings (firmware defaults are loaded at each startup)
 -	u - support for 2 magnetic encoders (AS5600) via i2C multiplexer chip (TCA9548A)
-- m - replacement pinouts for ProMicro (for FFB clipping LED, buttons 3 and 4, PWM direction pin)
-- o - motor NTC 100k thermistor over-temperature FFB cutoff (this fork only, opt-in)
-- v - per-axis invert/disable via RS232 commands (this fork only, opt-in)
+- k - gas axis split into separate gas/brake axes
+
+**Removed from this fork:** `m` (ProMicro pinout - the board isn't supported anymore), `o` (motor NTC over-temperature cutoff), `q` (motor current sensing/limit), `v` (per-axis invert/disable - it's always built in now, not an opt-in letter).
 
 Note* Some combinations are not possible at the same time, while some are not possible due to ATmega32U4 32k memory limit.
       If you decide to compile the source code yourself, enabling these options is just a matter of commenting/uncommenting their corresponding lines at the beginning of Config.h
 
 ## Firmware download - find the right build for your hardware
 
-1. Decide your board: **Leonardo/Micro** (stock pinout) or **ProMicro** (replacement pinout, `m` option).
-2. Decide which options you need from the list above (e.g. `w` for AS5600 magnetic encoder, `o` for the NTC over-temp cutoff, `v` for axis invert/disable).
+1. Board is always **Arduino Leonardo** (stock pinout) - this fork doesn't build for ProMicro/Micro anymore.
+2. Decide which options you need from the list above (e.g. `w`+`d` for an AS5600 magnetic encoder, `h` for a hat switch, `f` for an XY shifter).
 3. Open the **[Latest Release](https://github.com/bitwiresys/Arduino-FFB-wheel-v3/releases/latest)** and download the build zip. It contains:
-   - `leonardo/` and `promicro/` folders with every supported `.hex` combination (named `..._v250<letters>.hex`, e.g. `brWheel_my.ino.leonardo_v250dwov.hex` = AS5600 + NTC cutoff + axis tweaks)
+   - a `leonardo/` folder with every supported `.hex` combination (named `..._v250<letters>.hex`, e.g. `brWheel_my.ino.leonardo_v250dw.hex` = AS5600 magnetic encoder, nothing else)
    - `manifest.json` - a machine-readable list of every file with its board and a plain-English description of each enabled feature, so you can match your exact hardware without guessing what a letter combo means
-4. The exact set of letter-combos built for each board is declared in **[.github/variants/leonardo.txt](.github/variants/leonardo.txt)** and **[.github/variants/promicro.txt](.github/variants/promicro.txt)** - if the combination you need isn't listed (usually because it doesn't fit in the ATmega32U4's 32KB flash), you'll need to compile it yourself (see below) or drop an option.
-5. Past builds: **[all releases](https://github.com/bitwiresys/Arduino-FFB-wheel-v3/releases)**.
-
-## Motor NTC thermistor wiring (option `o`)
-
-For the motor over-temperature FFB cutoff feature, wire a 100K NTC thermistor as a voltage divider into pin **A4**:
-
-```
-5V --- [fixed resistor] ---+--- [NTC 100K] --- GND
-                            |
-                            A4
-```
-
-The fixed resistor value and thermistor curve (Beta) are hard-coded in `Config.h` (no in-firmware calibration) - if you use different hardware than a 100K NTC with a 330Ω fixed resistor, adjust `NTC_R_FIXED`/`NTC_BETA` in `Config.h` before compiling. The over-temperature threshold (80-200°C, default 120°C) is adjustable live from the control panel, no reflash needed.
+4. The exact set of letter-combos built is declared in **[.github/variants/leonardo.txt](.github/variants/leonardo.txt)** - it's a small, curated list (one build per genuinely distinct hardware setup, not every mathematically possible combination) - if what you need isn't listed, compile it yourself (see below).
+5. Prefer not to hunt for the right file by hand? The **[control panel](https://github.com/bitwiresys/Arduino-FFB-gui-v3)**'s setup wizard and Settings tab both do this matching for you - point-and-click, no manual file/letter lookup needed.
+6. Past builds: **[all releases](https://github.com/bitwiresys/Arduino-FFB-wheel-v3/releases)**.
 
 ## Firmware upload procedure
 You can use **[XLoader](XLoader)**:
@@ -114,12 +105,14 @@ You can use **[XLoader](XLoader)**:
 - press the reset button on Arduino (or shortly connect the RST pin to GND)
 - select the newly appeared COM port (Arduino in bootloader mode*) and press upload, you will only have a few seconds
 
-*It is possible that some cheap Chinese clones of Arduino Leonardo, Micro, or ProMicro do not have a bootloader programmed. In that case you need to upload the original Arduino Leonardo bootloader first. You can find more details about it here: https://docs.arduino.cc/built-in-examples/arduino-isp/ArduinoISP
+*It is possible that some cheap Chinese clones of Arduino Leonardo do not have a bootloader programmed. In that case you need to upload the original Arduino Leonardo bootloader first. You can find more details about it here: https://docs.arduino.cc/built-in-examples/arduino-isp/ArduinoISP
+
+Alternatively, the **[control panel](https://github.com/bitwiresys/Arduino-FFB-gui-v3)** flashes the board for you (via a bundled `arduino-cli`) from its setup wizard or Settings tab - no separate uploader tool needed.
 
 ## How to compile the source
 In order to compile the firmware yourself you may use Windows, 8, 10 or 11, you need to install Arduino IDE v1.8.19 and Arduino Boards v1.6.21. You must place all **[libraries](arduino-1.8.5/libraries)** in your .../documents/Arduino/Libraries folder. In Windows folder options set to show hidden files and folders then navigate to C:\Users\yourusername\AppData\Local\Arduino15\packages\arduino\hardware\avr\1.6.21\cores. Rename the folder "arduino" as a backup as we will need some files from it later, I just add "arduino_org" to the filename. Create a new folder called "arduino" and place the entire content from  **[modified core](arduino-1.8.5/hardware/arduino/cores/arduino)** into newly created "arduino" folder. Navigate back to "arduino_org" folder and copy files "IPAddress.cpp", "IPAddress.h", "new.cpp" and "new.h", then paste and replace the ones inside the "arduino" folder. That should fix all errors and you should be able to compile the code. Bare in mind that if you make any changes to HID or USB core files you will need to repeat the procedure and paste all modified files into the newly created "arduino" folder each time.
 
-To build every supported variant the same way CI does, see **[.github/scripts/build_hex.py](.github/scripts/build_hex.py)** - it reads the letter-combo lists from `.github/variants/leonardo.txt` and `.github/variants/promicro.txt` and produces a `dist/` folder with all `.hex` files plus `manifest.json`.
+To build every supported variant the same way CI does, see **[.github/scripts/build_hex.py](.github/scripts/build_hex.py)** - it reads the letter-combo list from `.github/variants/leonardo.txt` and produces a `dist/` folder with all `.hex` files plus `manifest.json`.
 
 ## Troubleshooting X-axis stuck at -540deg
 If you used some of the earlier firmware versions before fw-v22X, windows remembered the axis raw HID calibration which was +-32k. This issue occurs when you upload the latest firmware with new X-axis calibration 0-65k, which is incompatible with the previous HID calibration that Windows remembered for this FFB joystick device. However, there is a very easy fix for it, all we need to do is reset the device calibration in Windows. This can be done by using the program **[DXtweak2](FFB_misc_programs)**. Open the program and select Arduino Leonardo as a device if you have more than one FFB-capable device. Click on the device defaults button, then click the apply button and close the program. That's all.
