@@ -377,17 +377,12 @@ u8 pwmstate; // =0b00000101; // milos, PWM settings configuration byte, bit7 is 
 u8 axisInvertMask;
 u8 axisDisableMask;
 
-// dustin's rig, added - drivetrain-failure watchdog ("срыв руля"): if the firmware keeps
-// commanding strong torque but the encoder does not move AT ALL, the gear/coupling between
-// motor and wheel shaft has most likely sheared - the motor is spinning free. Latch a fault
-// and hard-cut FFB until the board is reset/power-cycled (runtime state, not in EEPROM).
-// Queried by the control panel with the 'T' command. Not behind an option letter - it's a
-// pure-software safety net that costs a few dozen bytes.
-boolean ffbFault = false;     // latched until reboot
-u16 ffbStallCnt = 0;          // consecutive FFB cycles of "high torque + frozen encoder"
-#define STALL_TORQUE_MIN(m)  ((s32)((m) >> 1)) // trip threshold: |command| > 50% of max torque
-#define STALL_SPD_EPS        0.05              // encoder counts per FFB cycle considered "not moving"
-#define STALL_TRIP_CYCLES    1500              // 3 s at the 500 Hz FFB rate (CONTROL_PERIOD = 2 ms)
+// dustin's rig, removed - the drivetrain-failure watchdog ("torque high + encoder static
+// => sheared gear") was indistinguishable from the driver simply holding the wheel hard
+// against the virtual end-stop (identical signature: high torque, zero speed). It false-
+// tripped during completely normal full-lock holds, permanently zeroing FFB until reboot -
+// the sudden loss of resistance let the driver's own hand force spin the wheel unchecked.
+// No way to tell the two apart without an actual torque/load sensor on the motor shaft.
 
 // milos, changed these from f32 to u8 (loaded from EEPROM)
 u8 configGeneralGain;  // = 1.0f;  // was 1.0f

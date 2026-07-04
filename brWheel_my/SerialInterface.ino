@@ -166,9 +166,6 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
       case 'S':
         CONFIG_SERIAL.println(brWheelFFB.state, DEC);
         break;
-      case 'T': // dustin's rig, added - drivetrain watchdog state: 1 = fault latched, FFB is cut until the board restarts
-        CONFIG_SERIAL.println(ffbFault ? 1 : 0);
-        break;
       case 'R':
         brWheelFFB.calibrate();
         break;

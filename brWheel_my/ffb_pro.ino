@@ -544,24 +544,10 @@ s32v cFFB::CalcTorqueCommands (s32v *pos) { // milos, pointer struct agument, re
 #endif // end of 2 ffb axis
 
     command.x = ConstrainEffect(command.x * configGeneralGain / 100 * gDeviceGain / 255); // milos, added gDeviceGain - applies the host's PID Device Gain report (FfbHandle_DeviceGain) on top of our own general gain knob
-    // dustin's rig, added - drivetrain-failure watchdog: strong torque commanded for
-    // STALL_TRIP_CYCLES in a row while the encoder is completely frozen => the motor-to-shaft
-    // coupling has likely sheared (motor spins free, wheel/encoder stand still). Latch the
-    // fault and cut FFB until the board is reset. NB: holding the wheel perfectly still
-    // against >50% force for 3 s straight can also trip this - a board restart clears it.
-    if (!ffbFault) {
-      if ((abs(command.x) > STALL_TORQUE_MIN(MM_MAX_MOTOR_TORQUE)) && (abs(spd) < STALL_SPD_EPS)) {
-        if (++ffbStallCnt >= STALL_TRIP_CYCLES) ffbFault = true;
-      } else {
-        ffbStallCnt = 0;
-      }
-    }
-    if (ffbFault) command.x = 0;
 #ifndef USE_TWOFFBAXIS // milos, for 1 FFB axis
     if (bitRead(effstate, 4)) CONFIG_SERIAL.println(command.x); // milos, added - FFB real time monitor
 #else // for 2 ffb axis
     command.y = ConstrainEffect(command.y * configGeneralGain / 100 * gDeviceGain / 255); // milos, added gDeviceGain
-    if (ffbFault) command.y = 0; // dustin's rig, added - watchdog above latched on the x-axis state
     if (bitRead(effstate, 4)) { // milos, for 2 ffb axis we send X and Y forces to FFB monitor
       CONFIG_SERIAL.print(command.x); // milos, FFB X axis
       CONFIG_SERIAL.print(" ");
