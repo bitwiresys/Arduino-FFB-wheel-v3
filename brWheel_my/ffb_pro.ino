@@ -594,6 +594,7 @@ void BRFFB::calibrate() { // milos, we are only calibrating encoder on x-axis (e
     } else {
       rightGap = actual;
     }
+    wdt_reset(); // dustin's rig, added - this loop can run ~76s worst case (254 * 300ms) without ever returning to loop(), which would otherwise starve the new hardware watchdog
     delay(300);
   }
   //ROTATION_MAX = rightGap; // milos, commented
@@ -639,6 +640,7 @@ void BRFFB::calibrate() { // milos, we are only calibrating encoder on x-axis (e
       cal_println("no z");
       break;
     }
+    wdt_reset(); // dustin's rig, added - same reasoning as the other calibrate() loop above
     delay(50);
   }
 #endif

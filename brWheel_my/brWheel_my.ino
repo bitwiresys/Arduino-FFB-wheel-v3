@@ -29,6 +29,7 @@
 #include "ffb_pro.h"
 //#include "ffb.h" // milos, commented out
 #include "USBDesc.h"
+#include <avr/wdt.h> // dustin's rig, added - hardware watchdog, see setup()/loop() for why
 #ifdef USE_QUADRATURE_ENCODER
 #include "QuadEncoder.h"
 #endif
@@ -165,6 +166,13 @@ void SendAxisReport(s32 x, s32 y, s32 z, s32 rx, s32 ry, u32 buttons) {
 //--------------------------------------------------------------------------------------------------------
 
 void setup() {
+  // dustin's rig, added - clear any watchdog state inherited from a WDT-triggered reset
+  // before doing anything else. Must happen first, before any lengthy init below, per the
+  // standard AVR WDT erratum workaround (a short WDT period surviving into a slow setup()
+  // can otherwise boot-loop the chip). Real wdt_enable() call is at the end of setup(),
+  // once init is done - see the comment there for what this actually protects against.
+  MCUSR = 0;
+  wdt_disable();
   CONFIG_SERIAL.begin(115200);
   // dustin's rig, added - Stream::parseInt()/parseFloat() default to a 1000ms blocking
   // timeout when the expected digits don't show up (e.g. a command byte arrives but its
@@ -363,6 +371,19 @@ void setup() {
 #endif // end of 2 ffb axis
 #endif // end of as5600
   last_refresh = micros();
+
+  // dustin's rig, added - hardware watchdog as a hang safety net. Root cause: this AVR
+  // core's Wire library (1.6.21, predates Wire.setWireTimeout()) has zero timeout on its
+  // I2C bus-wait loops (see twi.c) - if the bus glitches (electrical noise from the motor
+  // driver reversing hard against the FFB end-stop is the leading suspect, given the wheel
+  // and its magnetic encoder sit right next to the BTS7960), as5600x.getCumulativePosition()
+  // in loop() below can block for seconds, or forever if the bus latches up entirely -
+  // matching the reported "everything freezes for a few seconds, sometimes needs a full
+  // power-cycle to recover" symptom exactly (USB itself stays up throughout since it's a
+  // separate peripheral - only the blocked main loop, and everything it drives, goes dark).
+  // 1s gives ~500x headroom over the ~2ms control period under normal operation, so it
+  // won't fire during legitimate use - only when something genuinely hangs.
+  wdt_enable(WDTO_1S);
 }
 
 //--------------------------------------------------------------------------------------------------------
@@ -370,6 +391,7 @@ void setup() {
 //--------------------------------------------------------------------------------------------------------
 
 void loop() {
+  wdt_reset(); // dustin's rig, added - must run every iteration, see setup() for why
 #ifdef AVG_INPUTS //milos, added option see config.h
   if (asc < avgSamples) {
     ReadAnalogInputs(); // milos, get readings for averaging (only do it until we get all samples)
