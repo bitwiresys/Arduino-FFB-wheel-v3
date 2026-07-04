@@ -22,83 +22,120 @@ void setParam (u16 offset, u8 *addr_to, u8 size) {
 #endif
 }
 
-void SetDefaultEEPROMConfig() { // milos - store default firmware settings in EEPROM
-  u16 v16;
-  s32 v32;
-  u8 v8;
-  v16 = FIRMWARE_VERSION;
-  SetParam(PARAM_ADDR_FW_VERSION, v16);
-  v32 = 0;
-  SetParam(PARAM_ADDR_ENC_OFFSET, v32);
-  v16 = 1080; //milos, default degrees of rotation
-  SetParam(PARAM_ADDR_ROTATION_DEG, v16); //milos, added
-  v8 = 100; //milos, added
-  SetParam(PARAM_ADDR_GEN_GAIN, v8); //milos, added
-  SetParam(PARAM_ADDR_CNT_GAIN, v8); //milos, added
-  SetParam(PARAM_ADDR_PER_GAIN, v8); //milos, added
-  SetParam(PARAM_ADDR_STP_GAIN, v8); //milos, added
-  SetParam(PARAM_ADDR_SPR_GAIN, v8); //milos, added
-  v8 = 50; //milos, added
-  SetParam(PARAM_ADDR_DMP_GAIN, v8); //milos, added
-  SetParam(PARAM_ADDR_FRC_GAIN, v8); //milos, added
-  SetParam(PARAM_ADDR_INR_GAIN, v8); //milos, added
-  v8 = 70; //milos, added
-  SetParam(PARAM_ADDR_CTS_GAIN, v8); // milos, added
-  v16 = 0; // milos, added
-  SetParam(PARAM_ADDR_MIN_TORQ, v16); //milos, added
-  v16 = 2047; // milos, for PWM signals
-  SetParam(PARAM_ADDR_MAX_TORQ, v16); //milos, added
-  v16 = 4095; // milos, for 12bit DAC
-  SetParam(PARAM_ADDR_MAX_DAC, v16); // milos, added
-#ifdef USE_LOAD_CELL
-  v8 = 45; // milos, default max brake pressure
-#else
-  v8 = 128; // milos, ffb balance center value
+// dustin's rig - Load/Save/SetDefault used to be ~85 hand-written Get/SetParam call sites
+// (~1.3KB of flash just in call setup). They now share one PROGMEM address<->variable map;
+// Load and Save iterate it in opposite directions of transfer, and SetDefault assigns the
+// default values to the live variables and then saves them through the same table.
+typedef struct {
+  u8 addr;  // EEPROM offset (PARAM_ADDR_*)
+  u8 size;  // parameter size in bytes
+  u8* ptr;  // live firmware variable backing this parameter
+} EEVar;
+
+static const EEVar eeVars[] PROGMEM = {
+  { PARAM_ADDR_ROTATION_DEG, sizeof(ROTATION_DEG), (u8*)&ROTATION_DEG },
+#ifdef USE_ZINDEX
+  { PARAM_ADDR_ENC_OFFSET, sizeof(brWheelFFB.offset), (u8*)&brWheelFFB.offset },
 #endif
-  SetParam(PARAM_ADDR_BRK_PRES, v8); // milos, added
-  v8 = 0b00000001; // milos, added, autocenter spring on
-  SetParam(PARAM_ADDR_DSK_EFFC, v8); // milos, added
-  v8 = 0; // dustin's rig, added - no axes inverted/disabled by default
-  SetParam(PARAM_ADDR_AXIS_INVERT, v8);
-  SetParam(PARAM_ADDR_AXIS_DISABLE, v8);
-#ifndef USE_AS5600
-  v32 = 2400; // milos, default CPR value for optical encoder (this is for 600PPR)
-#else
-  v32 = 4096; // milos, default CPR value for 12bit magnetic encoder AS5600
-#endif
-  SetParam(PARAM_ADDR_ENC_CPR, v32); // milos, added
-#ifndef USE_MCP4725
-  v8 = 0b00001100; // milos, PWM out enabled, fast pwm, pwm+-, 7.8kHz, TOP 11bit (2047)
-#else
-  v8 = 0b10000000; // milos, DAC out enabled, DAC+- mode
-#endif
-  SetParam(PARAM_ADDR_PWM_SET, v8); // milos, added
+  { PARAM_ADDR_ENC_CPR, sizeof(CPR), (u8*)&CPR },
+  { PARAM_ADDR_GEN_GAIN, 1, &configGeneralGain },
+  { PARAM_ADDR_DMP_GAIN, 1, &configDamperGain },
+  { PARAM_ADDR_FRC_GAIN, 1, &configFrictionGain },
+  { PARAM_ADDR_CNT_GAIN, 1, &configConstantGain },
+  { PARAM_ADDR_PER_GAIN, 1, &configPeriodicGain },
+  { PARAM_ADDR_SPR_GAIN, 1, &configSpringGain },
+  { PARAM_ADDR_INR_GAIN, 1, &configInertiaGain },
+  { PARAM_ADDR_CTS_GAIN, 1, &configCenterGain },
+  { PARAM_ADDR_STP_GAIN, 1, &configStopGain },
+  { PARAM_ADDR_BRK_PRES, 1, &LC_scaling },
+  { PARAM_ADDR_DSK_EFFC, 1, &effstate },
+  { PARAM_ADDR_AXIS_INVERT, 1, &axisInvertMask },
+  { PARAM_ADDR_AXIS_DISABLE, 1, &axisDisableMask },
+  { PARAM_ADDR_MIN_TORQ, sizeof(MM_MIN_MOTOR_TORQUE), (u8*)&MM_MIN_MOTOR_TORQUE },
+  { PARAM_ADDR_MAX_TORQ, sizeof(MM_MAX_MOTOR_TORQUE), (u8*)&MM_MAX_MOTOR_TORQUE },
+  { PARAM_ADDR_MAX_DAC, sizeof(MAX_DAC), (u8*)&MAX_DAC },
+  // pwmstate is in the shared table even though the old SaveEEPROMConfig skipped it: the 'W'
+  // command is the only mutator and it writes EEPROM immediately, so RAM == EEPROM whenever
+  // 'A' runs and the extra EEPROM.update() is a verified no-op write of the same byte.
+  { PARAM_ADDR_PWM_SET, 1, &pwmstate },
 #ifdef USE_XY_SHIFTER
-  v16 = 255;
-  SetParam(PARAM_ADDR_SHFT_X0, v16); // milos, added
-  v16 = 511;
-  SetParam(PARAM_ADDR_SHFT_X1, v16); // milos, added
-  v16 = 767;
-  SetParam(PARAM_ADDR_SHFT_X2, v16); // milos, added
-  v16 = 255;
-  SetParam(PARAM_ADDR_SHFT_Y0, v16); // milos, added
-  v16 = 511;
-  SetParam(PARAM_ADDR_SHFT_Y1, v16); // milos, added
-  v16 = 0; // milos, 0b00000000 - default is rev gear in 6th, no inv x-axis, no inv y-axis, no inv rev gear button
-  SetParam(PARAM_ADDR_SHFT_CFG, v16); // milos, added
+  { PARAM_ADDR_SHFT_X0, sizeof(shifter.cal[0]), (u8*)&shifter.cal[0] },
+  { PARAM_ADDR_SHFT_X1, sizeof(shifter.cal[1]), (u8*)&shifter.cal[1] },
+  { PARAM_ADDR_SHFT_X2, sizeof(shifter.cal[2]), (u8*)&shifter.cal[2] },
+  { PARAM_ADDR_SHFT_Y0, sizeof(shifter.cal[3]), (u8*)&shifter.cal[3] },
+  { PARAM_ADDR_SHFT_Y1, sizeof(shifter.cal[4]), (u8*)&shifter.cal[4] },
+  { PARAM_ADDR_SHFT_CFG, 1, &shifter.cfg },
 #endif // end of xy shifter
-#ifndef USE_AUTOCALIB //milos, added - load default min/max manual cal values for all pedal axis
-  v16 = 0;
-  SetParam(PARAM_ADDR_ACEL_LO, v16);
-  SetParam(PARAM_ADDR_BRAK_LO, v16);
-  SetParam(PARAM_ADDR_CLUT_LO, v16);
-  SetParam(PARAM_ADDR_HBRK_LO, v16);
-  v16 = maxCal;
-  SetParam(PARAM_ADDR_ACEL_HI, v16);
-  SetParam(PARAM_ADDR_BRAK_HI, v16);
-  SetParam(PARAM_ADDR_CLUT_HI, v16);
-  SetParam(PARAM_ADDR_HBRK_HI, v16);
+#ifndef USE_AUTOCALIB // milos, manual min/max cal values for all pedal axis live in EEPROM
+  { PARAM_ADDR_ACEL_LO, sizeof(accel.min), (u8*)&accel.min },
+  { PARAM_ADDR_ACEL_HI, sizeof(accel.max), (u8*)&accel.max },
+  { PARAM_ADDR_BRAK_LO, sizeof(brake.min), (u8*)&brake.min },
+  { PARAM_ADDR_BRAK_HI, sizeof(brake.max), (u8*)&brake.max },
+  { PARAM_ADDR_CLUT_LO, sizeof(clutch.min), (u8*)&clutch.min },
+  { PARAM_ADDR_CLUT_HI, sizeof(clutch.max), (u8*)&clutch.max },
+  { PARAM_ADDR_HBRK_LO, sizeof(hbrake.min), (u8*)&hbrake.min },
+  { PARAM_ADDR_HBRK_HI, sizeof(hbrake.max), (u8*)&hbrake.max },
 #endif // end of autocalib
+};
+
+void SetDefaultEEPROMConfig() { // milos - store default firmware settings in EEPROM
+  u16 v16 = FIRMWARE_VERSION;
+  SetParam(PARAM_ADDR_FW_VERSION, v16);
+  s32 v32 = 0; // milos, z-index offset is always zeroed in EEPROM, even when USE_ZINDEX is off (and eeVars has no entry for it)
+  SetParam(PARAM_ADDR_ENC_OFFSET, v32);
+  ROTATION_DEG = 1080; //milos, default degrees of rotation
+  configGeneralGain = 100;
+  configConstantGain = 100;
+  configPeriodicGain = 100;
+  configStopGain = 100;
+  configSpringGain = 100;
+  configDamperGain = 50;
+  configFrictionGain = 50;
+  configInertiaGain = 50;
+  configCenterGain = 70;
+  MM_MIN_MOTOR_TORQUE = 0;
+  MM_MAX_MOTOR_TORQUE = 2047; // milos, for PWM signals
+  MAX_DAC = 4095; // milos, for 12bit DAC
+#ifdef USE_LOAD_CELL
+  LC_scaling = 45; // milos, default max brake pressure
+#else
+  LC_scaling = 128; // milos, ffb balance center value
+#endif
+  effstate = 0b00000001; // milos, autocenter spring on
+  axisInvertMask = 0; // dustin's rig - no axes inverted/disabled by default
+  axisDisableMask = 0;
+#ifndef USE_AS5600
+  CPR = 2400; // milos, default CPR value for optical encoder (this is for 600PPR)
+#else
+  CPR = 4096; // milos, default CPR value for 12bit magnetic encoder AS5600
+#endif
+#ifndef USE_MCP4725
+  pwmstate = 0b00001100; // milos, PWM out enabled, fast pwm, pwm+-, 7.8kHz, TOP 11bit (2047)
+#else
+  pwmstate = 0b10000000; // milos, DAC out enabled, DAC+- mode
+#endif
+#ifdef USE_ZINDEX
+  brWheelFFB.offset = 0;
+#endif
+#ifdef USE_XY_SHIFTER
+  shifter.cal[0] = 255;
+  shifter.cal[1] = 511;
+  shifter.cal[2] = 767;
+  shifter.cal[3] = 255;
+  shifter.cal[4] = 511;
+  shifter.cfg = 0; // milos, default is rev gear in 6th, no inv x-axis, no inv y-axis, no inv rev gear button
+#endif // end of xy shifter
+#ifndef USE_AUTOCALIB //milos, default min/max manual cal values for all pedal axis
+  accel.min = 0;
+  brake.min = 0;
+  clutch.min = 0;
+  hbrake.min = 0;
+  accel.max = maxCal;
+  brake.max = maxCal;
+  clutch.max = maxCal;
+  hbrake.max = maxCal;
+#endif // end of autocalib
+  SaveEEPROMConfig(); // dustin's rig - defaults now flow into EEPROM through the shared eeVars table
 }
 
 void SetEEPROMConfig() { // milos, changed FIRMWARE_VERSION to 16bit from 32bit
@@ -110,39 +147,14 @@ void SetEEPROMConfig() { // milos, changed FIRMWARE_VERSION to 16bit from 32bit
   }
 }
 
-void LoadEEPROMConfig () { //milos, added - updates all v8 parameters from EEPROM
-  GetParam(PARAM_ADDR_ROTATION_DEG, ROTATION_DEG);
-#ifdef USE_ZINDEX
-  GetParam(PARAM_ADDR_ENC_OFFSET, brWheelFFB.offset);
-#endif
-  GetParam(PARAM_ADDR_ENC_CPR, CPR);
-  GetParam(PARAM_ADDR_GEN_GAIN, configGeneralGain);
-  GetParam(PARAM_ADDR_DMP_GAIN, configDamperGain);
-  GetParam(PARAM_ADDR_FRC_GAIN, configFrictionGain);
-  GetParam(PARAM_ADDR_CNT_GAIN, configConstantGain);
-  GetParam(PARAM_ADDR_PER_GAIN, configPeriodicGain);
-  GetParam(PARAM_ADDR_SPR_GAIN, configSpringGain);
-  GetParam(PARAM_ADDR_INR_GAIN, configInertiaGain);
-  GetParam(PARAM_ADDR_CTS_GAIN, configCenterGain);
-  GetParam(PARAM_ADDR_STP_GAIN, configStopGain);
-  GetParam(PARAM_ADDR_BRK_PRES, LC_scaling);
-  GetParam(PARAM_ADDR_DSK_EFFC, effstate);
-  GetParam(PARAM_ADDR_AXIS_INVERT, axisInvertMask); // dustin's rig, added
-  GetParam(PARAM_ADDR_AXIS_DISABLE, axisDisableMask); // dustin's rig, added
-  GetParam(PARAM_ADDR_MIN_TORQ, MM_MIN_MOTOR_TORQUE);
-  GetParam(PARAM_ADDR_MAX_TORQ, MM_MAX_MOTOR_TORQUE);
-  GetParam(PARAM_ADDR_MAX_DAC, MAX_DAC);
+void LoadEEPROMConfig () { //milos, added - updates all firmware parameters from EEPROM
+  for (u8 i = 0; i < sizeof(eeVars) / sizeof(eeVars[0]); i++) {
+    EEVar v;
+    memcpy_P(&v, &eeVars[i], sizeof(v));
+    getParam(v.addr, v.ptr, v.size);
+  }
 #ifdef USE_MCP4725
   MM_MAX_MOTOR_TORQUE = MAX_DAC;
-#endif
-  GetParam(PARAM_ADDR_PWM_SET, pwmstate);
-#ifdef USE_XY_SHIFTER
-  GetParam(PARAM_ADDR_SHFT_X0, shifter.cal[0]); //milos, added
-  GetParam(PARAM_ADDR_SHFT_X1, shifter.cal[1]); //milos, added
-  GetParam(PARAM_ADDR_SHFT_X2, shifter.cal[2]); //milos, added
-  GetParam(PARAM_ADDR_SHFT_Y0, shifter.cal[3]); //milos, added
-  GetParam(PARAM_ADDR_SHFT_Y1, shifter.cal[4]); //milos, added
-  GetParam(PARAM_ADDR_SHFT_CFG, shifter.cfg); //milos, added
 #endif
 #ifdef USE_AUTOCALIB // milos, added - reset autocalibration
   accel.min = Z_AXIS_LOG_MAX;
@@ -153,59 +165,15 @@ void LoadEEPROMConfig () { //milos, added - updates all v8 parameters from EEPRO
   clutch.max = 0;
   hbrake.min = RY_AXIS_LOG_MAX;
   hbrake.max = 0;
-#else //milos, load min/max manual cal values from EEPROM
-  GetParam(PARAM_ADDR_ACEL_LO, accel.min);
-  GetParam(PARAM_ADDR_ACEL_HI, accel.max);
-  GetParam(PARAM_ADDR_BRAK_LO, brake.min);
-  GetParam(PARAM_ADDR_BRAK_HI, brake.max);
-  GetParam(PARAM_ADDR_CLUT_LO, clutch.min);
-  GetParam(PARAM_ADDR_CLUT_HI, clutch.max);
-  GetParam(PARAM_ADDR_HBRK_LO, hbrake.min);
-  GetParam(PARAM_ADDR_HBRK_HI, hbrake.max);
 #endif
 }
 
-void SaveEEPROMConfig () { //milos, added - saves all v8 parameters in EEPROM
-  SetParam(PARAM_ADDR_ROTATION_DEG, ROTATION_DEG);
-#ifdef USE_ZINDEX
-  SetParam(PARAM_ADDR_ENC_OFFSET, brWheelFFB.offset);
-#endif
-  SetParam(PARAM_ADDR_ENC_CPR, CPR);
-  SetParam(PARAM_ADDR_GEN_GAIN, configGeneralGain);
-  SetParam(PARAM_ADDR_DMP_GAIN, configDamperGain);
-  SetParam(PARAM_ADDR_FRC_GAIN, configFrictionGain);
-  SetParam(PARAM_ADDR_CNT_GAIN, configConstantGain);
-  SetParam(PARAM_ADDR_PER_GAIN, configPeriodicGain);
-  SetParam(PARAM_ADDR_SPR_GAIN, configSpringGain);
-  SetParam(PARAM_ADDR_INR_GAIN, configInertiaGain);
-  SetParam(PARAM_ADDR_CTS_GAIN, configCenterGain);
-  SetParam(PARAM_ADDR_STP_GAIN, configStopGain);
-  SetParam(PARAM_ADDR_BRK_PRES, LC_scaling);
-  SetParam(PARAM_ADDR_DSK_EFFC, effstate);
-  SetParam(PARAM_ADDR_AXIS_INVERT, axisInvertMask); // dustin's rig, added
-  SetParam(PARAM_ADDR_AXIS_DISABLE, axisDisableMask); // dustin's rig, added
-  SetParam(PARAM_ADDR_MIN_TORQ, MM_MIN_MOTOR_TORQUE);
-  SetParam(PARAM_ADDR_MAX_TORQ, MM_MAX_MOTOR_TORQUE);
-  SetParam(PARAM_ADDR_MAX_DAC, MAX_DAC);
-  //SetParam(PARAM_ADDR_PWM_SET, pwmstate); // milos, do not save it with command A (we do it with W instead)
-#ifdef USE_XY_SHIFTER //milos, added - save curent limits for xy shifter calibration and config
-  SetParam(PARAM_ADDR_SHFT_X0, shifter.cal[0]);
-  SetParam(PARAM_ADDR_SHFT_X1, shifter.cal[1]);
-  SetParam(PARAM_ADDR_SHFT_X2, shifter.cal[2]);
-  SetParam(PARAM_ADDR_SHFT_Y0, shifter.cal[3]);
-  SetParam(PARAM_ADDR_SHFT_Y1, shifter.cal[4]);
-  SetParam(PARAM_ADDR_SHFT_CFG, shifter.cfg);
-#endif // end of xy shifter
-#ifndef USE_AUTOCALIB //milos, added - save current manual pedal calibration config
-  SetParam(PARAM_ADDR_ACEL_LO, accel.min);
-  SetParam(PARAM_ADDR_ACEL_HI, accel.max);
-  SetParam(PARAM_ADDR_BRAK_LO, brake.min);
-  SetParam(PARAM_ADDR_BRAK_HI, brake.max);
-  SetParam(PARAM_ADDR_CLUT_LO, clutch.min);
-  SetParam(PARAM_ADDR_CLUT_HI, clutch.max);
-  SetParam(PARAM_ADDR_HBRK_LO, hbrake.min);
-  SetParam(PARAM_ADDR_HBRK_HI, hbrake.max);
-#endif
+void SaveEEPROMConfig () { //milos, added - saves all firmware parameters in EEPROM
+  for (u8 i = 0; i < sizeof(eeVars) / sizeof(eeVars[0]); i++) {
+    EEVar v;
+    memcpy_P(&v, &eeVars[i], sizeof(v));
+    setParam(v.addr, v.ptr, v.size);
+  }
 }
 
 void ClearEEPROMConfig() { //milos, added - clears EEPROM (1KB on ATmega32U4)

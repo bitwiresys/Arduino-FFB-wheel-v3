@@ -109,6 +109,14 @@ u32 last_refresh = 0;
 u32 now_micros = micros();
 u32 timeDiffConfigSerial = now_micros;
 
+// dustin's rig, added - diagnostics for the freeze-under-load bug, reported via the 'T'
+// serial command (see SerialInterface.ino). mcusrMirror is the true MCU reset cause,
+// captured before setup() clears MCUSR. lastLoopMicros/maxLoopGapUs track the worst gap
+// ever seen between two loop() iterations, to prove or disprove a multi-second hang.
+uint8_t mcusrMirror = 0;
+u32 lastLoopMicros = 0;
+u32 maxLoopGapUs = 0;
+
 uint16_t dz, bdz; // milos
 uint8_t last_LC_scaling; //milos
 //----------------------------------------- Options -------------------------------------------------------
@@ -149,6 +157,13 @@ AS5600L as5600y(0x36); // milos, we need 2nd instance of the class because cumul
 #endif // end of 2 ffb axis
 #endif // end of as5600
 
+// dustin's rig, added - rescales one analog axis to its manual/auto calibration window with the
+// dz deadzone and clamps to the axis range (was three identical map+constrain copies in loop())
+static s16 calibratedAxis(s32 val, s16 lo, s16 hi, s32 physMax) {
+  s16 v = map(val, lo + dz, hi - dz, 0, physMax); // NB: map() result truncates to 16 bits BEFORE the constrain, exactly like the old direct assignment to .val did
+  return constrain((s32)v, (s32)0, physMax);
+}
+
 // dustin's rig, added - applies per-axis invert/disable masks (set via the 'I'/'D' serial commands) right before
 // the HID report goes out over USB, so it works no matter which build-time input path produced these 5 values.
 // bit0=X(steering), bit1=Y(brake), bit2=Z(throttle), bit3=RX(clutch), bit4=RY(handbrake)
@@ -166,6 +181,10 @@ void SendAxisReport(s32 x, s32 y, s32 z, s32 rx, s32 ry, u32 buttons) {
 //--------------------------------------------------------------------------------------------------------
 
 void setup() {
+  // dustin's rig, added - snapshot the real reset cause (PORF/EXTRF/BORF/WDRF bits) before
+  // clearing it below, so the 'T' diagnostic command can report whether a watchdog reset
+  // actually happened. Must be the very first statement, before MCUSR gets cleared.
+  mcusrMirror = MCUSR;
   // dustin's rig, added - clear any watchdog state inherited from a WDT-triggered reset
   // before doing anything else. Must happen first, before any lengthy init below, per the
   // standard AVR WDT erratum workaround (a short WDT period surviving into a slow setup()
@@ -391,6 +410,16 @@ void setup() {
 //--------------------------------------------------------------------------------------------------------
 
 void loop() {
+  // dustin's rig, added - track the worst-ever gap between loop() iterations, in real
+  // microseconds, before anything else runs. Must come before wdt_reset() so a gap caused
+  // by the very stall we're trying to catch still gets recorded even if the watchdog
+  // resets the chip on the next iteration's overdue wdt_reset().
+  {
+    u32 nowLoopUs = micros();
+    u32 gapUs = nowLoopUs - lastLoopMicros; // unsigned subtraction wraps safely across micros() overflow
+    if (lastLoopMicros != 0 && gapUs > maxLoopGapUs) maxLoopGapUs = gapUs;
+    lastLoopMicros = nowLoopUs;
+  }
   wdt_reset(); // dustin's rig, added - must run every iteration, see setup() for why
 #ifdef AVG_INPUTS //milos, added option see config.h
   if (asc < avgSamples) {
@@ -592,12 +621,10 @@ void loop() {
 #endif // end of avg inputs
 
         // milos, rescale all analog axis according to a new manual calibration and add small deadzones
-        accel.val = map(accel.val, accel.min + dz, accel.max - dz, 0, Z_AXIS_PHYS_MAX);  // milos, with manual calibration and dead zone
-        clutch.val = map(clutch.val, clutch.min + dz, clutch.max - dz, 0, RX_AXIS_PHYS_MAX);
-        hbrake.val = map(hbrake.val, hbrake.min + dz, hbrake.max - dz, 0, RY_AXIS_PHYS_MAX);
-        accel.val = constrain(accel.val, 0, Z_AXIS_PHYS_MAX); // milos, constrain axis ranges
-        clutch.val = constrain(clutch.val, 0, RX_AXIS_PHYS_MAX);
-        hbrake.val = constrain(hbrake.val, 0, RY_AXIS_PHYS_MAX);
+        // dustin's rig - one shared map+constrain body instead of three inline copies
+        accel.val = calibratedAxis(accel.val, accel.min, accel.max, Z_AXIS_PHYS_MAX);
+        clutch.val = calibratedAxis(clutch.val, clutch.min, clutch.max, RX_AXIS_PHYS_MAX);
+        hbrake.val = calibratedAxis(hbrake.val, hbrake.min, hbrake.max, RY_AXIS_PHYS_MAX);
 
 #ifdef USE_LOAD_CELL // milos, with load cell
         if (brake.val < bdz) { // milos, if values below deadzone threshold

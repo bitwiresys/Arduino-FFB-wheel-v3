@@ -68,6 +68,13 @@ void activateFFBclipLED(s32 t) {  // milos, added - turn on FFB clip LED if max 
   }
 }
 
+// dustin's rig, added - every SetPWM branch maps a 0..MM_MAX_MOTOR_TORQUE magnitude onto
+// some output span; sharing one helper strips two constant 32-bit arguments from ~15 map()
+// call sites (same map() math, one shared copy of the argument setup).
+static s32 TorqueMap(s32 mag, s32 outLo, s32 outHi) {
+  return map(mag, 0, (s32)MM_MAX_MOTOR_TORQUE, outLo, outHi);
+}
+
 //void SetPWM (s32 torque)  { //torque between -MM_MAX_MOTOR and +MM_MAX_MOTOR // milos, torque is xFFB, while yFFB is passed from torqueY global variable outside of this function
 void SetPWM (s32v *torque) { // milos, takes pointer struct as argument - 2 axis FFB data
   if (torque != NULL) { // milos, this check is always required for pointers
@@ -97,9 +104,9 @@ void SetPWM (s32v *torque) { // milos, takes pointer struct as argument - 2 axis
           // milos, if we use 1 or 2 FFB axis we have dac+- mode (for 1 ffb axis it's gona be only on xFFB)
           if (torque->x > 0) {
             dac0.setVoltage(0, false, 0); // left force is 0
-            dac1.setVoltage(map(torque->x, 0, MM_MAX_MOTOR_TORQUE, minTorquePP * MM_MAX_MOTOR_TORQUE, R_bal * MM_MAX_MOTOR_TORQUE), false, 0); // right force is scaled from min to max
+            dac1.setVoltage(TorqueMap(torque->x, minTorquePP * MM_MAX_MOTOR_TORQUE, R_bal * MM_MAX_MOTOR_TORQUE), false, 0); // right force is scaled from min to max
           } else if (torque->x < 0) {
-            dac0.setVoltage(map(-torque->x, 0, MM_MAX_MOTOR_TORQUE, minTorquePP * MM_MAX_MOTOR_TORQUE, L_bal * MM_MAX_MOTOR_TORQUE), false, 0); // left force is scaled from min to max
+            dac0.setVoltage(TorqueMap(-torque->x, minTorquePP * MM_MAX_MOTOR_TORQUE, L_bal * MM_MAX_MOTOR_TORQUE), false, 0); // left force is scaled from min to max
             dac1.setVoltage(0, false, 0); // right force is 0
           } else {
             dac0.setVoltage(0, false, 0);
@@ -107,10 +114,10 @@ void SetPWM (s32v *torque) { // milos, takes pointer struct as argument - 2 axis
           }
         } else { // milos, if DAC0.50.100 mode (pwmstate bit5=1, bit6=0)
           if (torque->x > 0) {
-            torque->x = map(torque->x, 0, MM_MAX_MOTOR_TORQUE, (MM_MAX_MOTOR_TORQUE >> 1) + MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+            torque->x = TorqueMap(torque->x, (MM_MAX_MOTOR_TORQUE >> 1) + MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
             dac0.setVoltage(torque->x, false, 0);
           } else if (torque->x < 0) {
-            torque->x = map(-torque->x, 0, MM_MAX_MOTOR_TORQUE, (MM_MAX_MOTOR_TORQUE >> 1) - MM_MIN_MOTOR_TORQUE, 0);
+            torque->x = TorqueMap(-torque->x, (MM_MAX_MOTOR_TORQUE >> 1) - MM_MIN_MOTOR_TORQUE, 0);
             dac0.setVoltage(torque->x, false, 0);
           } else {
             dac0.setVoltage(MM_MAX_MOTOR_TORQUE / 2, false, 0);
@@ -119,10 +126,10 @@ void SetPWM (s32v *torque) { // milos, takes pointer struct as argument - 2 axis
           dac1.setVoltage(MM_MAX_MOTOR_TORQUE >> 1, false, 0); // milos, set 2nd dac at half range
 #else // if 2 ffb axis and mcp4725
           if (torque->y > 0) {
-            torque->y = map(torque->y, 0, MM_MAX_MOTOR_TORQUE, (MM_MAX_MOTOR_TORQUE >> 1) + MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+            torque->y = TorqueMap(torque->y, (MM_MAX_MOTOR_TORQUE >> 1) + MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
             dac1.setVoltage(torque->y, false, 0);
           } else if (torque->y < 0) {
-            torque->y = map(-torque->y, 0, MM_MAX_MOTOR_TORQUE, (MM_MAX_MOTOR_TORQUE >> 1) - MM_MIN_MOTOR_TORQUE, 0);
+            torque->y = TorqueMap(-torque->y, (MM_MAX_MOTOR_TORQUE >> 1) - MM_MIN_MOTOR_TORQUE, 0);
             dac1.setVoltage(torque->y, false, 0);
           } else {
             dac1.setVoltage(MM_MAX_MOTOR_TORQUE / 2, false, 0);
@@ -135,7 +142,7 @@ void SetPWM (s32v *torque) { // milos, takes pointer struct as argument - 2 axis
         } else {
           digitalWriteFast(DIR_PIN, LOW);
         }
-        torque->x = map(abs(torque->x), 0, MM_MAX_MOTOR_TORQUE, minTorquePP * MM_MAX_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+        torque->x = TorqueMap(abs(torque->x), minTorquePP * MM_MAX_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
         dac0.setVoltage(torque->x, false, 0); // update 1st DAC
 #ifndef USE_TWOFFBAXIS // milos, if we use 1 FFB axis
         dac1.setVoltage(0, false, 0); // keep 2nd DAC at zero
@@ -146,7 +153,7 @@ void SetPWM (s32v *torque) { // milos, takes pointer struct as argument - 2 axis
         } else {
           digitalWriteFast(PWM_PIN_R, LOW); // milos, negative force (down)
         }
-        torque->y = map(abs(torque->y), 0, MM_MAX_MOTOR_TORQUE, minTorquePP * MM_MAX_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+        torque->y = TorqueMap(abs(torque->y), minTorquePP * MM_MAX_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
         dac1.setVoltage(torque->y, false, 0); // update 2nd DAC
 #endif // end of 2 ffb axis
       }
@@ -161,12 +168,12 @@ void SetPWM (s32v *torque) { // milos, takes pointer struct as argument - 2 axis
     if (!bitRead(pwmstate, 1)) { // if pwmstate bit1=0
       if (!bitRead(pwmstate, 6)) { // if PWM+- mode (pwmstate bit1=0, bit6=0)
         if (torque->x > 0) {
-          torque->x = map(torque->x, 0, MM_MAX_MOTOR_TORQUE, MM_MIN_MOTOR_TORQUE, R_bal * MM_MAX_MOTOR_TORQUE);
+          torque->x = TorqueMap(torque->x, MM_MIN_MOTOR_TORQUE, R_bal * MM_MAX_MOTOR_TORQUE);
           PWM16A(0);
           PWM16B(torque->x);
           digitalWriteFast(DIR_PIN, HIGH); //use dir pin as BTS7960 pwm motor enable signal
         } else if (torque->x < 0) {
-          torque->x = map(-torque->x, 0, MM_MAX_MOTOR_TORQUE, MM_MIN_MOTOR_TORQUE, L_bal * MM_MAX_MOTOR_TORQUE);
+          torque->x = TorqueMap(-torque->x, MM_MIN_MOTOR_TORQUE, L_bal * MM_MAX_MOTOR_TORQUE);
           PWM16A(torque->x);
           PWM16B(0);
           digitalWriteFast(DIR_PIN, HIGH);
@@ -177,10 +184,10 @@ void SetPWM (s32v *torque) { // milos, takes pointer struct as argument - 2 axis
         }
       } else { // if PWM0.50.100 mode (pwmstate bit1=0 and bit6=1)
         if (torque->x > 0) {
-          torque->x = map(torque->x, 0, MM_MAX_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE / 2 + MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+          torque->x = TorqueMap(torque->x, MM_MAX_MOTOR_TORQUE / 2 + MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
           PWM16A(torque->x);
         } else if (torque->x < 0) {
-          torque->x = map(-torque->x, 0, MM_MAX_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE / 2 - MM_MIN_MOTOR_TORQUE, 0);
+          torque->x = TorqueMap(-torque->x, MM_MAX_MOTOR_TORQUE / 2 - MM_MIN_MOTOR_TORQUE, 0);
           PWM16A(torque->x);
         } else {
           PWM16A(MM_MAX_MOTOR_TORQUE / 2);
@@ -194,14 +201,14 @@ void SetPWM (s32v *torque) { // milos, takes pointer struct as argument - 2 axis
         } else {
           digitalWriteFast(DIR_PIN, LOW);
         }
-        torque->x = map(abs(torque->x), 0, MM_MAX_MOTOR_TORQUE, MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+        torque->x = TorqueMap(abs(torque->x), MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
         PWM16A(torque->x);
       } else { // if RCM mode (pwmstate bit1=1, bit6=1)
         if (torque->x > 0) {
-          torque->x = map(torque->x, 0, MM_MAX_MOTOR_TORQUE, RCM_zer * (1.0 + minTorquePP), RCM_max);
+          torque->x = TorqueMap(torque->x, RCM_zer * (1.0 + minTorquePP), RCM_max);
           PWM16A(torque->x);
         } else if (torque->x < 0) {
-          torque->x = map(-torque->x, 0, MM_MAX_MOTOR_TORQUE, RCM_zer * (1.0 - minTorquePP), RCM_min);
+          torque->x = TorqueMap(-torque->x, RCM_zer * (1.0 - minTorquePP), RCM_min);
           PWM16A(torque->x);
         } else {
           PWM16A(RCM_zer);
@@ -214,11 +221,11 @@ void SetPWM (s32v *torque) { // milos, takes pointer struct as argument - 2 axis
     if (!bitRead(pwmstate, 1)) { // if pwmstate bit1=0
       if (!bitRead(pwmstate, 6)) { // if 2CH PWM+- mode (pwmstate bit1=0, bit6=0)
         if (torque->x > 0) { // milos, X axis FFB, pwm+-, D9 (left), D10 (right)
-          torque->x = map(torque->x, 0, MM_MAX_MOTOR_TORQUE, MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+          torque->x = TorqueMap(torque->x, MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
           PWM16A(0);
           PWM16B(torque->x);
         } else if (torque->x < 0) {
-          torque->x = map(-torque->x, 0, MM_MAX_MOTOR_TORQUE, MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+          torque->x = TorqueMap(-torque->x, MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
           PWM16A(torque->x);
           PWM16B(0);
         } else {
@@ -226,11 +233,11 @@ void SetPWM (s32v *torque) { // milos, takes pointer struct as argument - 2 axis
           PWM16B(0);
         }
         if (torque->y >= 0) {  // milos, Y axis FFB, pwm+-, D11 (up), D5 (down)
-          torque->y = map(torque->y, 0, MM_MAX_MOTOR_TORQUE, MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+          torque->y = TorqueMap(torque->y, MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
           PWM16C(torque->y);
           PWM16D(0);
         } else if (torque->y < 0) {
-          torque->y = map(-torque->y, 0, MM_MAX_MOTOR_TORQUE, MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+          torque->y = TorqueMap(-torque->y, MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
           PWM16C(0);
           PWM16D(torque->y);
         } else {
@@ -244,19 +251,19 @@ void SetPWM (s32v *torque) { // milos, takes pointer struct as argument - 2 axis
         //digitalWriteFast(PWM_PIN_D, LOW);
         //digitalWriteFast(PWM_PIN_U, LOW);
         if (torque->x > 0) {
-          torque->x = map(torque->x, 0, MM_MAX_MOTOR_TORQUE, (MM_MAX_MOTOR_TORQUE >> 1) + MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+          torque->x = TorqueMap(torque->x, (MM_MAX_MOTOR_TORQUE >> 1) + MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
           PWM16A(torque->x);
         } else if (torque->x < 0) {
-          torque->x = map(-torque->x, 0, MM_MAX_MOTOR_TORQUE, (MM_MAX_MOTOR_TORQUE >> 1) - MM_MIN_MOTOR_TORQUE, 0);
+          torque->x = TorqueMap(-torque->x, (MM_MAX_MOTOR_TORQUE >> 1) - MM_MIN_MOTOR_TORQUE, 0);
           PWM16A(torque->x);
         } else {
           PWM16A(MM_MAX_MOTOR_TORQUE / 2);
         }
         if (torque->y > 0) {
-          torque->y = map(torque->y, 0, MM_MAX_MOTOR_TORQUE, (MM_MAX_MOTOR_TORQUE >> 1) + MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+          torque->y = TorqueMap(torque->y, (MM_MAX_MOTOR_TORQUE >> 1) + MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
           PWM16B(torque->y);
         } else if (torque->y < 0) {
-          torque->y = map(-torque->y, 0, MM_MAX_MOTOR_TORQUE, (MM_MAX_MOTOR_TORQUE >> 1) - MM_MIN_MOTOR_TORQUE, 0);
+          torque->y = TorqueMap(-torque->y, (MM_MAX_MOTOR_TORQUE >> 1) - MM_MIN_MOTOR_TORQUE, 0);
           PWM16B(torque->y);
         } else {
           PWM16B(MM_MAX_MOTOR_TORQUE / 2);
@@ -271,35 +278,17 @@ void SetPWM (s32v *torque) { // milos, takes pointer struct as argument - 2 axis
         } else {
           digitalWriteFast(PWM_PIN_U, LOW);
         }
-        torque->x = map(abs(torque->x), 0, MM_MAX_MOTOR_TORQUE, MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+        torque->x = TorqueMap(abs(torque->x), MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
         PWM16A(torque->x); // milos, use pin D9 for xFFB
         if (torque->y >= 0) {
           digitalWriteFast(PWM_PIN_D, HIGH); // milos, pin D5
         } else {
           digitalWriteFast(PWM_PIN_D, LOW);
         }
-        torque->y = map(abs(torque->y), 0, MM_MAX_MOTOR_TORQUE, MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
+        torque->y = TorqueMap(abs(torque->y), MM_MIN_MOTOR_TORQUE, MM_MAX_MOTOR_TORQUE);
         PWM16B(torque->y); // milos, use pin D10 for yFFB
       } else { // milos, if 2CH RCM mode (pwmstate bit1=1, bit6=1)
-        // milos, 2CH RCM mode (unfortunately, not enough memory left for it so I commented it out)
-        /*if (torque->x > 0) {
-          torque->x = map(torque->x, 0, MM_MAX_MOTOR_TORQUE, RCM_zer * (1.0 + minTorquePP), RCM_max);
-          PWM16A(torque->x);
-          } else if (torque->x < 0) {
-          torque->x = map(-torque->x, 0, MM_MAX_MOTOR_TORQUE, RCM_zer * (1.0 - minTorquePP), RCM_min);
-          PWM16A(torque->x);
-          } else {
-          PWM16A(RCM_zer);
-          }
-          if (torque->y > 0) {
-          torque->y = map(torque->y, 0, MM_MAX_MOTOR_TORQUE, RCM_zer * (1.0 + minTorquePP), RCM_max);
-          PWM16B(torque->y);
-          } else if (torque->y < 0) {
-          torque->y = map(-torque->y, 0, MM_MAX_MOTOR_TORQUE, RCM_zer * (1.0 - minTorquePP), RCM_min);
-          PWM16B(torque->y);
-          } else {
-          PWM16B(RCM_zer);
-          }*/
+        // milos, 2CH RCM mode is not implemented (not enough flash left for it)
         PWM16A(RCM_zer); // milos, for now only zero it out
         PWM16B(RCM_zer);
       }

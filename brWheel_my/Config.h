@@ -423,7 +423,7 @@ u8 configStopGain; // = 1.0f;	// was 1.0f
 // drivers: AASD - great, brushless driver with FOC - good, BTS7960 - ok
 // motors: brushless AC servo - great, brushless DC - good, brushed DC - ok
 
-uint16_t PWMtops [13] =
+const uint16_t PWMtops [13] PROGMEM = // dustin's rig - lookup table, lives in flash instead of wasting 26 bytes of RAM
 {
   400,  // 0
   800,  // 1
@@ -455,10 +455,11 @@ uint16_t calcTOP(byte b) { // milos, added - function which returns TOP value fr
   for (uint8_t i = 0; i < 4; i++) {
     bitWrite(j, i, bitRead(b, i + 2)); // milos, decode bits2-5 from pwmstate byte into index
   }
+  uint16_t top = pgm_read_word(&PWMtops[j]); // dustin's rig - table moved to PROGMEM
   if (bitRead(b, 0)) { // if phase correct PWM mode (pwmstate bit0=1)
-    return (PWMtops[j] >> 1); // milos, divide by 2
+    return (top >> 1); // milos, divide by 2
   } else { // if fast PWM mode (pwmstate bit0=0)
-    return (PWMtops[j]);
+    return (top);
   }
 #else // if mcp4725
   return (MAX_DAC);

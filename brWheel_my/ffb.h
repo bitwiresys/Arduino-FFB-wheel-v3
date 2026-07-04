@@ -213,62 +213,27 @@ extern const uint16_t OutReportSize[];
 
 void FfbSetDriver(uint8_t id);
 
-// Initializes and enables MIDI to joystick using USART1 TX
-void FfbInitMidi(void);
-
-// Send "enable FFB" to joystick
-void FfbSendEnable(void);
-
-// Send "disable FFB" to joystick
-void FfbSendDisable(void);
-
 // Handle incoming data from USB
 void FfbOnUsbData(uint8_t *data, uint16_t len);
 
 // Handle incoming feature requests
 void FfbOnCreateNewEffect(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, USB_FFBReport_PIDBlockLoad_Feature_Data_t *outData);
-void FfbOnPIDPool(USB_FFBReport_PIDPool_Feature_Data_t *data);
 
-// Utility to wait any amount of milliseconds.
-// Resets watchdog for each 1ms wait.
-void WaitMs(int ms);
+// dustin's rig, removed - WaitMs/_delay_us10/FfbSendData/FfbSendPackets/FfbPulseX1
+// declarations: MIDI-era stubs, no definitions or call sites left.
 
-// delay_us has max limits and the wait time must be known at compile time.
-// function for making 10us delays that don't have be known at compile time.
-// max delay 2560us.
-void _delay_us10(uint8_t delay);
-
-// Send raw data to the
-void FfbSendData(const uint8_t *data, uint16_t len);
-void FfbSendPackets(const uint8_t *data, uint16_t len);
-void FfbPulseX1( void );
-
-// Debugging
-//	<index> should be pointer to an index variable whose value should be set to 0 to start iterating.
-//	Returns 0 when no more effects
-uint8_t FfbDebugListEffects(uint8_t *index);
 
 // Effect manipulations
 
 typedef struct
 {
-  uint8_t midi;	// disables all MIDI-traffic
-  uint8_t springs;
-  uint8_t constants;
-  uint8_t triangles;
-  uint8_t sines;
-  uint8_t effectId[MAX_EFFECTS];
+  uint8_t effectId[MAX_EFFECTS]; // dustin's rig - per-type disable flags (midi/springs/constants/triangles/sines) removed with their FfbEnable* setters; only the per-effect flags were ever read
 } TDisabledEffectTypes;
 
 extern volatile TDisabledEffectTypes gDisabledEffects;
 
 void FfbSendSysEx(const uint8_t* midi_data, uint8_t len);
 
-void FfbEnableSprings(uint8_t inEnable);
-void FfbEnableConstants(uint8_t inEnable);
-void FfbEnableTriangles(uint8_t inEnable);
-void FfbEnableSines(uint8_t inEnable);
-void FfbEnableEffectId(uint8_t inId, uint8_t inEnable);
 
 // Bit-masks for effect states
 #define MEffectState_Free			0x00
@@ -309,26 +274,6 @@ typedef struct
 #endif // end of 2 ffb axis
 } TEffectState;
 
-typedef struct
-{
-  void (*EnableInterrupts)(void);
-  const uint8_t* (*GetSysExHeader)(uint8_t* hdr_len);
-  void (*SetAutoCenter)(uint8_t enable);
-
-  void (*StartEffect)(uint8_t eid);
-  void (*StopEffect)(uint8_t eid);
-  void (*FreeEffect)(uint8_t eid);
-
-  void (*ModifyDuration)(uint8_t effectId, uint16_t duration);
-  //void (*SetDeviceGain)(USB_FFBReport_DeviceGain_Output_Data_t* data, volatile TEffectState* effect); //milos, added
-
-  void (*CreateNewEffect)(USB_FFBReport_CreateNewEffect_Feature_Data_t* inData, volatile TEffectState* effect);
-  void (*SetEnvelope)(USB_FFBReport_SetEnvelope_Output_Data_t* data, volatile TEffectState* effect);
-  void (*SetCondition)(USB_FFBReport_SetCondition_Output_Data_t* data, volatile TEffectState* effect);
-  void (*SetPeriodic)(USB_FFBReport_SetPeriodic_Output_Data_t* data, volatile TEffectState* effect);
-  void (*SetConstantForce)(USB_FFBReport_SetConstantForce_Output_Data_t* data, volatile TEffectState* effect);
-  void (*SetRampForce)(USB_FFBReport_SetRampForce_Output_Data_t* data, volatile TEffectState* effect);
-  uint8_t (*SetEffect)(USB_FFBReport_SetEffect_Output_Data_t* data, volatile TEffectState* effect);  //milos, changed from int to uint8_t
-} FFB_Driver;
+// dustin's rig, removed - FFB_Driver function-pointer struct (single-driver firmware, calls are direct now)
 
 #endif // _FFB_PRO_

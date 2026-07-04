@@ -34,7 +34,6 @@
 //#include "ConfigHID.h" // milos, commented out
 
 //------------------------------------- Defines ----------------------------------------------------------
-u8 valueglobal = 55;
 #define LEDs_SetAllLEDs(l)
 
 #define FIRST_EID	1
@@ -47,42 +46,15 @@ bool IsValidEffectId(uint8_t id) { return id >= FIRST_EID && id <= MAX_EFFECTS; 
 
 //--------------------------------------- Globals --------------------------------------------------------
 
-const FFB_Driver ffb_drivers[1] =
-{
-  {
-    FfbproEnableInterrupts,
-    FfbproGetSysExHeader,
-    FfbproSetAutoCenter,
-    FfbproStartEffect,
-    FfbproStopEffect,
-    FfbproFreeEffect,
-    FfbproModifyDuration,
-    FfbproCreateNewEffect,
-    FfbproSetEnvelope,
-    FfbproSetCondition,
-    FfbproSetPeriodic,
-    FfbproSetConstantForce,
-    FfbproSetRampForce,
-    FfbproSetEffect,
-    //FfbproSetDeviceGain, //milos, added
-  }
-};
-
-static const FFB_Driver* ffb;
-
-void setFFB(s32 command);
+// dustin's rig, removed - the FFB_Driver function-pointer table: there was exactly one
+// driver (ffb_pro), so every call went through a RAM struct + icall for nothing. Direct
+// Ffbpro* calls let LTO see the targets (and drop the table + per-call thunks).
 
 // Effect management
 volatile uint8_t nextEID = FIRST_EID;	// FFP effect indexes starts from 1
 volatile USB_FFBReport_PIDStatus_Input_Data_t pidState;	// For holding device status flags
 volatile u8 gDeviceGain = 255; // milos, added - host-requested overall FFB gain (PID Device Gain report, 0..255 raw, applied in ffb_pro.ino alongside configGeneralGain)
 
-void SendPidStateForEffect(uint8_t eid, uint8_t effectState);
-void SendPidStateForEffect(uint8_t eid, uint8_t effectState)
-{
-  pidState.effectBlockIndex = effectState;
-  pidState.effectBlockIndex = 0;
-}
 
 static volatile TEffectState gEffectStates[MAX_EFFECTS + 1];	// one for each effect (array index 0 is unused to simplify things)
 
@@ -178,9 +150,9 @@ b8 FFB_HID_Setup (Setup& setup)
 
 //-------------------------------------------------------------------------------------------------------------
 
-void FfbSetDriver(uint8_t id)
+void FfbSetDriver(uint8_t id) // dustin's rig - id kept for API compatibility, there is only the ffb_pro driver
 {
-  ffb = &ffb_drivers[id];
+  (void)id;
   USBDevice.HID_Setup_Callback = FFB_HID_Setup;
   USBDevice.HID_ReceiveReport_Callback = FfbOnUsbData;
 }
@@ -228,7 +200,7 @@ void StopEffect(uint8_t id)
     return;
   gEffectStates[id].state &= ~MEffectState_Playing;
   if (!gDisabledEffects.effectId[id]) {
-    ffb->StopEffect(id);
+    FfbproStopEffect(id);
     t0_updated = false; //milos, added
   }
 }
@@ -241,7 +213,7 @@ void FreeEffect(uint8_t id)
   gEffectStates[id].state = 0;
   if (id < nextEID)
     nextEID = id;
-  ffb->FreeEffect(id);
+  FfbproFreeEffect(id);
   t0_updated = false; //milos, added
 }
 
@@ -310,7 +282,7 @@ void FfbOnUsbData(uint8_t *data, uint16_t len)
       break;
     case 2:
       if (IsValidEffectId(effectId)) // milos, added - guard against out-of-range effectBlockIndex from host
-      ffb->SetEnvelope((USB_FFBReport_SetEnvelope_Output_Data_t*) data, &gEffectStates[effectId]);
+      FfbproSetEnvelope((USB_FFBReport_SetEnvelope_Output_Data_t*) data, &gEffectStates[effectId]);
       //milos, added
       LogText("SetEnv - aL:");
       LogBinary(&((USB_FFBReport_SetEnvelope_Output_Data_t*)data)->attackLevel, 1);
@@ -323,7 +295,7 @@ void FfbOnUsbData(uint8_t *data, uint16_t len)
       break;
     case 3:
       if (IsValidEffectId(effectId)) // milos, added - guard against out-of-range effectBlockIndex from host
-      ffb->SetCondition((USB_FFBReport_SetCondition_Output_Data_t*) data, &gEffectStates[effectId]);
+      FfbproSetCondition((USB_FFBReport_SetCondition_Output_Data_t*) data, &gEffectStates[effectId]);
       //milos, added
       LogText("SetCond - pbOff:");
       LogBinary(&((USB_FFBReport_SetCondition_Output_Data_t*)data)->parameterBlockOffset, 1);
@@ -338,7 +310,7 @@ void FfbOnUsbData(uint8_t *data, uint16_t len)
       break;
     case 4:
       if (IsValidEffectId(effectId)) // milos, added - guard against out-of-range effectBlockIndex from host
-      ffb->SetPeriodic((USB_FFBReport_SetPeriodic_Output_Data_t*) data, &gEffectStates[effectId]);
+      FfbproSetPeriodic((USB_FFBReport_SetPeriodic_Output_Data_t*) data, &gEffectStates[effectId]);
       //milos, added
       LogText("SetPer - mag:");
       LogBinary(&((USB_FFBReport_SetPeriodic_Output_Data_t*)data)->magnitude, 2);
@@ -351,14 +323,14 @@ void FfbOnUsbData(uint8_t *data, uint16_t len)
       break;
     case 5:
       if (IsValidEffectId(effectId)) // milos, added - guard against out-of-range effectBlockIndex from host
-      ffb->SetConstantForce((USB_FFBReport_SetConstantForce_Output_Data_t*) data, &gEffectStates[effectId]);
+      FfbproSetConstantForce((USB_FFBReport_SetConstantForce_Output_Data_t*) data, &gEffectStates[effectId]);
       //milos, added
       LogText("SetCF - mag:");
       LogBinaryLf(&((USB_FFBReport_SetConstantForce_Output_Data_t*)data)->magnitude, 2);
       break;
     case 6:
       if (IsValidEffectId(effectId)) // milos, added - guard against out-of-range effectBlockIndex from host
-      ffb->SetRampForce((USB_FFBReport_SetRampForce_Output_Data_t*)data, &gEffectStates[effectId]);
+      FfbproSetRampForce((USB_FFBReport_SetRampForce_Output_Data_t*)data, &gEffectStates[effectId]);
       //milos, added
       LogText("SetRF - start:");
       LogBinary(&((USB_FFBReport_SetRampForce_Output_Data_t*)data)->rampStart, 1);
@@ -446,7 +418,7 @@ void FfbOnCreateNewEffect (USB_FFBReport_CreateNewEffect_Feature_Data_t* inData,
     effect->phase = 0x00;
     effect->period = 0x3E8; //milos 1000ms (1Hz)
 
-    ffb->CreateNewEffect(inData, effect);
+    FfbproCreateNewEffect(inData, effect);
 
     LogText("Created effect");
     LogBinary(&outData->effectBlockIndex, 1);
@@ -462,29 +434,13 @@ void FfbHandle_SetEffect(USB_FFBReport_SetEffect_Output_Data_t *data)
   if (!IsValidEffectId(data->effectBlockIndex)) // milos, added - guard against out-of-range effectBlockIndex from host
     return;
   volatile TEffectState* effect = &gEffectStates[data->effectBlockIndex];
-  ffb->SetEffect(data, effect);
+  FfbproSetEffect(data, effect);
   //LogTextLf("Set Effect"); //milos, commented
 }
 
-void FfbOnPIDPool(USB_FFBReport_PIDPool_Feature_Data_t *data)
-{
-  FreeAllEffects();
+// dustin's rig, removed - FfbOnPIDPool: never called, the PID Pool feature report (id 7)
+// is answered directly in HID_GetReport above.
 
-  data->reportId = 7;
-  data->ramPoolSize = 0xFFFF;
-  data->maxSimultaneousEffects = 0x0B;	// FFP supports playing up to 11 simultaneous effects
-  data->memoryManagement = 3;
-}
-
-//milos commented these, since nothing was implemented inside
-/*void FfbHandle_SetCustomForceData(USB_FFBReport_SetCustomForceData_Output_Data_t *data)
-  {
-  }
-
-  void FfbHandle_SetDownloadForceSample(USB_FFBReport_SetDownloadForceSample_Output_Data_t *data)
-  {
-  LogTextLf("Download Force Samples");
-  }*/
 
 void FfbHandle_EffectOperation(USB_FFBReport_EffectOperation_Output_Data_t *data)
 {
@@ -499,7 +455,7 @@ void FfbHandle_EffectOperation(USB_FFBReport_EffectOperation_Output_Data_t *data
     LogBinaryLf(eid, 1);
     StartEffect(eid);
     if (IsValidEffectId(eid) && !gDisabledEffects.effectId[eid]) // milos, added - guard against eid==0x7F ("all effects") sentinel and other out-of-range values
-      ffb->StartEffect(eid);
+      FfbproStartEffect(eid);
   }
   else if (data->operation == 2)
   { // StartSolo
@@ -511,7 +467,7 @@ void FfbHandle_EffectOperation(USB_FFBReport_EffectOperation_Output_Data_t *data
     StartEffect(eid);
 
     if (IsValidEffectId(eid) && !gDisabledEffects.effectId[eid]) // milos, fixed - target the actual effect being started instead of the unsafe 0x7F sentinel
-      ffb->StartEffect(eid);
+      FfbproStartEffect(eid);
   }
   else if (data->operation == 3)
   { // Stop
@@ -528,7 +484,7 @@ void FfbHandle_BlockFree (USB_FFBReport_BlockFree_Output_Data_t *data)
 
   if (eid == 0xFF)
   { // all effects
-    FreeAllEffects(); // milos, fixed - removed the unsafe direct ffb->FreeEffect(0x7f) driver call (FfbproFreeEffect is currently a no-op anyway, and 0x7f is out of bounds for any per-effect array)
+    FreeAllEffects(); // milos, fixed - removed the unsafe direct FfbproFreeEffect(0x7f) driver call (FfbproFreeEffect is currently a no-op anyway, and 0x7f is out of bounds for any per-effect array)
   }
   else if (IsValidEffectId(eid)) // milos, added - guard against any other out-of-range effectBlockIndex from host
   {
@@ -571,12 +527,12 @@ void FfbHandle_DeviceControl(USB_FFBReport_DeviceControl_Output_Data_t *data)
       break;
     case 0x03:
       LogTextLf("Stop All Effects");		// Disable auto-center spring and stop all effects
-      ffb->SetAutoCenter(0);
+      FfbproSetAutoCenter(0);
       pidState.effectBlockIndex = 0;
       break;
     case 0x04:
       LogTextLf("Reset");			// Reset (e.g. FFB-application out of focus)
-      ffb->SetAutoCenter(1);		// Enable auto-center spring and stop all effects
+      FfbproSetAutoCenter(1);		// Enable auto-center spring and stop all effects
       //		WaitMs(75);
       FreeAllEffects();
       break;
@@ -605,128 +561,10 @@ void FfbHandle_DeviceGain(USB_FFBReport_DeviceGain_Output_Data_t *data)
   //LogBinaryLf(&data->deviceGain, 1);
 }
 
-//milos, commented since nothing was implemented inside
-/*void FfbHandle_SetCustomForce(USB_FFBReport_SetCustomForce_Output_Data_t *data)
-  {
-  LogTextLf("Set Custom Force");
-  //	LogBinary(&data, sizeof(USB_FFBReport_SetCustomForce_Output_Data_t));
-  }*/
 
 //------------------------------------------------------------------------------
+// dustin's rig, removed - WaitMs/FfbSendData/FfbSendPackets/FfbSendEnable/FfbSendDisable/
+// FfbDebugListEffects/FfbEnable* were empty MIDI-era stubs with zero call sites left.
 
-void WaitMs(int ms)
-{
-  while (ms--)
-    delay(1);
-}
-
-void FfbSendData(const uint8_t *data, uint16_t len)
-{
-}
-
-void FfbSendPackets(const uint8_t *data, uint16_t len)
-{
-}
-
-// ----------------------------------------------
-// Debug and other settings
-// ----------------------------------------------
-
-
-// Send "enable FFB" to joystick
-void FfbSendEnable()
-{
-}
-
-// Send "disable FFB" to joystick
-void FfbSendDisable()
-{
-}
-
-/*
-  typedef struct {
-	uint8_t state;	// see constants <MEffectState_*>
-	uint16_t usb_duration, usb_fadeTime;	// used to calculate fadeTime to MIDI, since in USB it is given as time difference from the end while in MIDI it is given as time from start
-	// These are used to calculate effects of USB gain to MIDI data
-	uint8_t usb_gain, usb_offset, usb_attackLevel, usb_fadeLevel;
-	uint8_t usb_magnitude;
-	FFP_MIDI_Effect_Basic	data;	// For FFP, this is enough for all types of effects - cast for other effect types when necessary
-	} TEffectState;
-
-  const uint8_t MEffectState_Allocated = 0x01;
-  const uint8_t MEffectState_Playing = 0x02;
-  const uint8_t MEffectState_SentToJoystick = 0x04;
-*/
-
-uint8_t FfbDebugListEffects(uint8_t *index)
-{
-  if (*index == 0)
-    *index = 2;
-
-  //	if (*index >= nextEID)
-  if (*index >= MAX_EFFECTS)
-    return 0;
-
-  TEffectState *e = (TEffectState*) &gEffectStates[*index];
-  LogBinary(index, 1);
-  if (e->state == MEffectState_Allocated) {
-    LogTextP(PSTR(" Allocated"));
-  } else if (e->state == MEffectState_Playing) {
-    LogTextP(PSTR(" Playing\n"));
-  } else {
-    LogTextP(PSTR(" Free"));
-  }
-
-  if (gDisabledEffects.effectId[*index]) {
-    LogTextP(PSTR(" (Disabled)\n"));
-  } else {
-    LogTextP(PSTR(" (Enabled)\n"));
-  }
-  if (e->state) {
-    LogTextP(PSTR("  duration="));
-    LogBinary(&e->duration, 2);
-    LogTextP(PSTR("\n  fadeTime="));
-    LogBinary(&e->fadeTime, 2);
-    LogTextP(PSTR("\n  gain="));
-    LogBinary(&e->gain, 1);
-  }
-
-  *index = *index + 1;
-
-  return 1;
-}
-
-
-void FfbEnableSprings(uint8_t inEnable)
-{
-  gDisabledEffects.springs = !inEnable;
-}
-
-void FfbEnableConstants(uint8_t inEnable)
-{
-  gDisabledEffects.constants = !inEnable;
-}
-
-void FfbEnableTriangles(uint8_t inEnable)
-{
-  gDisabledEffects.triangles = !inEnable;
-}
-
-void FfbEnableSines(uint8_t inEnable)
-{
-  gDisabledEffects.sines = !inEnable;
-}
-
-void FfbEnableEffectId(uint8_t inId, uint8_t inEnable)
-{
-  gDisabledEffects.effectId[inId] = !inEnable;
-
-  if (gEffectStates[inId].state == MEffectState_Playing)
-  {
-    LogTextP(PSTR("Stop manual:"));
-    LogBinaryLf(&inId, 1);
-    StopEffect(inId);
-  }
-}
 
 #endif

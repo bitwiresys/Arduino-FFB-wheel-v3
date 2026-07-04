@@ -55,113 +55,100 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
     s32 temp;
     u8 ffb_temp;
     switch (c) {
-      case 'U': // milos, send all firmware settings
-        CONFIG_SERIAL.print(ROTATION_DEG);
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(configGeneralGain);
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(configDamperGain);
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(configFrictionGain);
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(configConstantGain);
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(configPeriodicGain);
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(configSpringGain);
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(configInertiaGain);
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(configCenterGain);
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(configStopGain);
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(MM_MIN_MOTOR_TORQUE);
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(LC_scaling);
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(effstate, DEC); //milos, desktop effects in decimal form
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(MM_MAX_MOTOR_TORQUE); //milos, send max torque as parameter
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(CPR); //milos, send CPR as parameter
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(pwmstate, DEC); //milos, send pwmstate byte in decimal form
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(axisInvertMask, DEC); // dustin's rig, added - always present now (see USE_AXIS_TWEAKS removal note)
-        CONFIG_SERIAL.print(' ');
-        CONFIG_SERIAL.print(axisDisableMask, DEC); // dustin's rig, added
-        CONFIG_SERIAL.println();
-        break;
+      case 'U': { // milos, send all firmware settings
+          // dustin's rig - one space-separated loop instead of 17 print pairs (every value here
+          // is non-negative, so printing via u32 emits the exact same characters as before)
+          const u32 uVals[] = {
+            (u32)ROTATION_DEG, configGeneralGain, configDamperGain, configFrictionGain,
+            configConstantGain, configPeriodicGain, configSpringGain, configInertiaGain,
+            configCenterGain, configStopGain, MM_MIN_MOTOR_TORQUE, LC_scaling,
+            effstate, MM_MAX_MOTOR_TORQUE, (u32)CPR, pwmstate,
+            axisInvertMask, axisDisableMask // dustin's rig, added - always present now (see USE_AXIS_TWEAKS removal note)
+          };
+          for (uint8_t i = 0; i < sizeof(uVals) / sizeof(uVals[0]); i++) {
+            if (i) CONFIG_SERIAL.print(' ');
+            CONFIG_SERIAL.print(uVals[i]);
+          }
+          CONFIG_SERIAL.println();
+          break;
+        }
       case 'V':
         CONFIG_SERIAL.print("fw-v");
         CONFIG_SERIAL.print(FIRMWARE_VERSION, DEC);
         // milos, firmware options
+        // dustin's rig - the option letters are known at compile time, so adjacent string
+        // literals concatenate into ONE flash string and one print call (was ~20 calls)
+        CONFIG_SERIAL.print(
 #ifdef USE_AUTOCALIB
-        CONFIG_SERIAL.print("a");
+          "a"
 #endif
 #ifdef USE_TWOFFBAXIS
-        CONFIG_SERIAL.print("b");
+          "b"
 #endif
 #ifdef USE_ZINDEX
-        CONFIG_SERIAL.print("z");
+          "z"
 #endif
 #ifdef USE_CENTERBTN
-        CONFIG_SERIAL.print("c");
+          "c"
 #endif
 #ifndef USE_QUADRATURE_ENCODER
-        CONFIG_SERIAL.print("d"); // milos, if no optical encoder
+          "d" // milos, if no optical encoder
 #endif
 #ifdef USE_AS5600
-        CONFIG_SERIAL.print("w");
+          "w"
 #endif
 #ifdef USE_TCA9548
-        CONFIG_SERIAL.print("u"); // milos, if tca9548
+          "u" // milos, if tca9548
 #endif
 #ifdef USE_HATSWITCH
-        CONFIG_SERIAL.print("h");
+          "h"
 #endif
 #ifdef USE_ADS1015
-        CONFIG_SERIAL.print("s");
+          "s"
 #endif
 #ifdef AVG_INPUTS
-        CONFIG_SERIAL.print("i");
+          "i"
 #endif
 #ifdef USE_BTNMATRIX
-        CONFIG_SERIAL.print("t");
+          "t"
 #endif
 #ifdef USE_XY_SHIFTER
-        CONFIG_SERIAL.print("f");
+          "f"
 #endif
 #ifdef USE_EXTRABTN
-        CONFIG_SERIAL.print("e");
+          "e"
 #endif
 #ifdef USE_SPLITAXIS
-        CONFIG_SERIAL.print("k");
+          "k"
 #endif
 #ifdef USE_ANALOGFFBAXIS
-        CONFIG_SERIAL.print("x");
+          "x"
 #endif
 #ifdef USE_SHIFT_REGISTER
-        CONFIG_SERIAL.print("n");
+          "n"
 #endif
 #ifdef USE_SN74ALS166N
-        CONFIG_SERIAL.print("r");
+          "r"
 #endif
 #ifdef USE_LOAD_CELL
-        CONFIG_SERIAL.print("l");
+          "l"
 #endif
 #ifdef USE_MCP4725
-        CONFIG_SERIAL.print("g");
+          "g"
 #endif
 #ifndef USE_EEPROM
-        CONFIG_SERIAL.print("p");
+          "p"
 #endif
-        // no 'v' letter anymore - axis invert/disable is always compiled in, not a build option
-        CONFIG_SERIAL.print("\r\n");
+          // no 'v' letter anymore - axis invert/disable is always compiled in, not a build option
+          "\r\n");
         break;
       case 'X': // dustin's rig, added - CI-injected build number (see FW_BUILD_ID in Config.h), for the control panel to compare against the latest GitHub release
         CONFIG_SERIAL.println(FW_BUILD_ID, DEC);
+        break;
+      case 'T': // dustin's rig, added - freeze-under-load diagnostics: reset cause + worst-ever loop() gap, see brWheel_my.ino
+        CONFIG_SERIAL.print(mcusrMirror, HEX);
+        CONFIG_SERIAL.print(' ');
+        CONFIG_SERIAL.println(maxLoopGapUs);
         break;
       case 'S':
         CONFIG_SERIAL.println(brWheelFFB.state, DEC);
@@ -233,14 +220,10 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
         //SetParam(PARAM_ADDR_ROTATION_DEG, temp);// milos, update EEPROM
         break;
       case 'E': //milos, added - turn desktop effects and ffb monitor on/off
-        ffb_temp = CONFIG_SERIAL.parseInt();
-        ffb_temp = constrain(ffb_temp, 0, 255);
-        for (uint8_t i = 0; i < 8; i++) { //milos, decode incomming number into individual bits
-          bitWrite(effstate, i, bitRead(ffb_temp, i));
-        }
+        // dustin's rig - the old constrain(0,255) + 8x bitWrite loop was byte-for-byte
+        // identical to a plain u8 assignment
+        effstate = CONFIG_SERIAL.parseInt();
         CONFIG_SERIAL.println(effstate, BIN);
-        //CONFIG_SERIAL.println(1);
-        //SetParam(PARAM_ADDR_DSK_EFFC, effstate); // milos, update EEPROM
         break;
       case 'I': // dustin's rig, added - invert axes: bit0=X(steering),bit1=Y(brake),bit2=Z(throttle),bit3=RX(clutch),bit4=RY(handbrake); use 'A' command to save to EEPROM
         ffb_temp = CONFIG_SERIAL.parseInt();
@@ -254,11 +237,7 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
         break;
       case 'W': //milos, added - configure PWM settings and frequency
 #ifdef USE_EEPROM
-        ffb_temp = CONFIG_SERIAL.parseInt();
-        ffb_temp = constrain(ffb_temp, 0, 255);
-        for (uint8_t i = 0; i < 8; i++) { // milos, decode incomming number into individual bits
-          bitWrite(pwmstate, i, bitRead(ffb_temp, i));
-        }
+        pwmstate = CONFIG_SERIAL.parseInt(); // dustin's rig - same u8 assignment as the old constrain+bit-copy loop
         SetParam(PARAM_ADDR_PWM_SET, pwmstate); // milos, update EEPROM with new pwm settings
         temp = calcTOP(pwmstate) * minTorquePP; // milos, recalculate new min torque for curent min torque %
         {
@@ -276,61 +255,26 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
       case 'H': // milos, added - configure the XY shifter calibration
 #ifdef USE_XY_SHIFTER
         c = toUpper(CONFIG_SERIAL.read());
-        switch (c) {
-          case 'A':
-            temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 1023);
-            shifter.cal[0] = temp;
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'B':
-            temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 1023);
-            shifter.cal[1] = temp;
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'C':
-            temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 1023);
-            shifter.cal[2] = temp;
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'D':
-            temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 1023);
-            shifter.cal[3] = temp;
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'E':
-            temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 1023);
-            shifter.cal[4] = temp;
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'F':
-            temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 255);
-            shifter.cfg = temp;
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'G':
-            CONFIG_SERIAL.print(shifter.cal[0]);
-            CONFIG_SERIAL.print(" ");
-            CONFIG_SERIAL.print(shifter.cal[1]);
-            CONFIG_SERIAL.print(" ");
-            CONFIG_SERIAL.print(shifter.cal[2]);
-            CONFIG_SERIAL.print(" ");
-            CONFIG_SERIAL.print(shifter.cal[3]);
-            CONFIG_SERIAL.print(" ");
-            CONFIG_SERIAL.print(shifter.cal[4]);
-            CONFIG_SERIAL.print(" ");
-            CONFIG_SERIAL.println(shifter.cfg);
-            break;
-          case 'R':
-            CONFIG_SERIAL.print(shifter.x);
-            CONFIG_SERIAL.print(" ");
-            CONFIG_SERIAL.println(shifter.y);
-            break;
+        // dustin's rig - 'A'..'E' had identical parse/constrain/assign bodies, they now index
+        // shifter.cal[] directly; 'F'/'G'/'R' keep their own paths
+        if (c >= 'A' && c <= 'E') {
+          temp = CONFIG_SERIAL.parseInt();
+          shifter.cal[c - 'A'] = constrain(temp, 0, 1023);
+          CONFIG_SERIAL.println(1);
+        } else if (c == 'F') {
+          temp = CONFIG_SERIAL.parseInt();
+          shifter.cfg = constrain(temp, 0, 255);
+          CONFIG_SERIAL.println(1);
+        } else if (c == 'G') {
+          for (uint8_t i = 0; i < 5; i++) {
+            CONFIG_SERIAL.print(shifter.cal[i]);
+            CONFIG_SERIAL.print(' ');
+          }
+          CONFIG_SERIAL.println(shifter.cfg);
+        } else if (c == 'R') {
+          CONFIG_SERIAL.print(shifter.x);
+          CONFIG_SERIAL.print(' ');
+          CONFIG_SERIAL.println(shifter.y);
         }
 #else // if no xy shifter
         CONFIG_SERIAL.read(); // dustin's rig, fixed - consume the subcommand char: it used to stay in the RX buffer and then executed as a NEW command (e.g. "HG" left a dangling 'G' = set rotation degrees, with parseInt timing out to 0 -> constrained to 30 deg!)
@@ -340,72 +284,32 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
       case 'Y': // milos, added - configure manual calibration for pedals
 #ifndef USE_AUTOCALIB // milos, if manual pedal calibration
         c = toUpper(CONFIG_SERIAL.read());
-        switch (c) {
-          case 'A':
+        // dustin's rig - 8 identical parse/constrain/assign bodies collapsed into one shared
+        // body behind a letter->target-pointer switch ('R' readout stays its own path)
+        if (c == 'R') {
+          const s16 yVals[] = { brake.min, brake.max, accel.min, accel.max, clutch.min, clutch.max, hbrake.min, hbrake.max };
+          for (uint8_t i = 0; i < sizeof(yVals) / sizeof(yVals[0]); i++) {
+            if (i) CONFIG_SERIAL.print(' ');
+            CONFIG_SERIAL.print(yVals[i]);
+          }
+          CONFIG_SERIAL.println();
+        } else {
+          s16* cal = NULL;
+          switch (c) {
+            case 'A': cal = &brake.min; break;
+            case 'B': cal = &brake.max; break;
+            case 'C': cal = &accel.min; break;
+            case 'D': cal = &accel.max; break;
+            case 'E': cal = &clutch.min; break;
+            case 'F': cal = &clutch.max; break;
+            case 'G': cal = &hbrake.min; break;
+            case 'H': cal = &hbrake.max; break;
+          }
+          if (cal != NULL) {
             temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 4095);
-            brake.min = temp;
+            *cal = constrain(temp, 0, 4095);
             CONFIG_SERIAL.println(1);
-            break;
-          case 'B':
-            temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 4095);
-            brake.max = temp;
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'C':
-            temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 4095);
-            accel.min = temp;
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'D':
-            temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 4095);
-            accel.max = temp;
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'E':
-            temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 4095);
-            clutch.min = temp;
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'F':
-            temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 4095);
-            clutch.max = temp;
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'G':
-            temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 4095);
-            hbrake.min = temp;
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'H':
-            temp = CONFIG_SERIAL.parseInt();
-            temp = constrain(temp, 0, 4095);
-            hbrake.max = temp;
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'R':
-            CONFIG_SERIAL.print(brake.min);
-            CONFIG_SERIAL.print(" ");
-            CONFIG_SERIAL.print(brake.max);
-            CONFIG_SERIAL.print(" ");
-            CONFIG_SERIAL.print(accel.min);
-            CONFIG_SERIAL.print(" ");
-            CONFIG_SERIAL.print(accel.max);
-            CONFIG_SERIAL.print(" ");
-            CONFIG_SERIAL.print(clutch.min);
-            CONFIG_SERIAL.print(" ");
-            CONFIG_SERIAL.print(clutch.max);
-            CONFIG_SERIAL.print(" ");
-            CONFIG_SERIAL.print(hbrake.min);
-            CONFIG_SERIAL.print(" ");
-            CONFIG_SERIAL.println(hbrake.max);
-            break;
+          }
         }
 #else // if autocalib
         CONFIG_SERIAL.read(); // dustin's rig, fixed - same as 'H' above: a dangling 'R' from "YR" used to trigger the 'R' command = motor calibration run!
@@ -446,71 +350,37 @@ void configCDC() { // milos, virtual serial port firmware configuration interfac
         CONFIG_SERIAL.println(0);
 #endif // end of eeprom
         break;
-      case 'F':
-        c = toUpper(CONFIG_SERIAL.read());
-        switch (c) {
-          case 'G':
-            ffb_temp = CONFIG_SERIAL.parseInt();
-            configGeneralGain = constrain(ffb_temp, 0, 255);
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'C':
-            ffb_temp = CONFIG_SERIAL.parseInt();
-            configConstantGain = constrain(ffb_temp, 0, 255);
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'D':
-            ffb_temp = CONFIG_SERIAL.parseInt();
-            configDamperGain = constrain(ffb_temp, 0, 255);
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'F':
-            ffb_temp = CONFIG_SERIAL.parseInt();
-            configFrictionGain = constrain(ffb_temp, 0, 255);
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'S':
-            ffb_temp = CONFIG_SERIAL.parseInt();
-            configPeriodicGain = constrain(ffb_temp, 0, 255);
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'M':
-            ffb_temp = CONFIG_SERIAL.parseInt();
-            configSpringGain = constrain(ffb_temp, 0, 255);
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'I':
-            ffb_temp = CONFIG_SERIAL.parseInt();
-            configInertiaGain = constrain(ffb_temp, 0, 255);
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'A':
-            ffb_temp = CONFIG_SERIAL.parseInt();
-            configCenterGain = constrain(ffb_temp, 0, 255);
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'B':
-            ffb_temp = CONFIG_SERIAL.parseInt();
-            configStopGain = constrain(ffb_temp, 0, 255);
-            CONFIG_SERIAL.println(1);
-            break;
-          case 'J':
+      case 'F': { // milos, FFB gain knobs
+          c = toUpper(CONFIG_SERIAL.read());
+          if (c == 'J') { // milos, min torque needs its own scaling math
             ffb_temp = CONFIG_SERIAL.parseInt();
             ffb_temp = constrain(ffb_temp, 0, 255); //milos
             minTorquePP = (f32)ffb_temp * 0.001; // milos, max is 25.5% or 0.255
             MM_MIN_MOTOR_TORQUE = (u16)(minTorquePP * (f32)MM_MAX_MOTOR_TORQUE); // milos, we can set it during run time
             CONFIG_SERIAL.println(1);
-            break;
-            /*case 'K': //milos, commented out, once set at compile time this must not be changed anymore
-              temp = CONFIG_SERIAL.parseInt();
-              if (temp > MM_MIN_MOTOR_TORQUE)
-              {
-                MM_MAX_MOTOR_TORQUE = constrain(temp, 1, TOP);
-              }
-              CONFIG_SERIAL.println(temp);  // milos
-              break;*/
+          } else {
+            // dustin's rig - the 9 gain subcommands had identical parse/assign bodies; one
+            // shared body behind a letter->gain-pointer switch. ffb_temp is u8, so the old
+            // constrain(ffb_temp, 0, 255) was a no-op after the same u8 truncation.
+            u8* gain = NULL;
+            switch (c) {
+              case 'G': gain = &configGeneralGain; break;
+              case 'C': gain = &configConstantGain; break;
+              case 'D': gain = &configDamperGain; break;
+              case 'F': gain = &configFrictionGain; break;
+              case 'S': gain = &configPeriodicGain; break;
+              case 'M': gain = &configSpringGain; break;
+              case 'I': gain = &configInertiaGain; break;
+              case 'A': gain = &configCenterGain; break;
+              case 'B': gain = &configStopGain; break;
+            }
+            if (gain != NULL) {
+              *gain = CONFIG_SERIAL.parseInt();
+              CONFIG_SERIAL.println(1);
+            }
+          }
+          break;
         }
-        break;
     }
   }
 }

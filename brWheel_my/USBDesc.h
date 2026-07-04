@@ -93,17 +93,7 @@
 #define RZ_AXIS_LOG_MIN 0//(-RX_AXIS_LOG_MAX)
 #define RZ_AXIS_PHYS_MAX  ((1L<<RZ_AXIS_NB_BITS)-1)
 
-//#define SendInputReport(m_x,m_y,m_z,m_buttons)			Joystick.send_12(m_x,m_y,m_z,m_buttons)
-//#define SendInputReport(m_x,m_y,m_z,m_buttons)			Joystick.send_16_12_12(m_x,m_y,m_z,m_buttons)
-//#define SendInputReport(m_x,m_y,m_z,m_buttons)			Joystick.send_16_16_12(m_x,m_y,m_z,m_buttons)
-//#define SendInputReport(m_x,m_y,m_z,m_rx,m_buttons)			Joystick.send_16_10_10_10(m_x,m_y,m_z,m_rx,m_buttons)
-//#define SendInputReport(m_x,m_y,m_z,m_rx,m_buttons)			Joystick.send_16_16_12(m_x,m_y,m_z,m_buttons)
-//#define SendInputReport(m_x,m_y,m_z,m_rx,m_buttons)			Joystick.send_16_10_18(m_x,m_y,m_z,m_rx,m_buttons) // milos, ver1
-//#define SendInputReport(m_x,m_y,m_z,m_rx,sx,sy,m_buttons)			Joystick.send_16_8_32(m_x,m_y,m_z,m_rx,sx,sy,m_buttons)
-//#define SendInputReport(m_x,m_y,m_z,m_rx,m_buttons)			Joystick.send_16_16_10_10_12(m_x,m_y,m_z,m_rx,m_buttons) // milos, ver2
-//#define SendInputReport(m_x,m_y,m_z,m_rx,m_buttons)      Joystick.send_16_16_12_12_32(m_x,m_y,m_z,m_rx,m_buttons) // milos, ver3
 #define SendInputReport(m_x,m_y,m_z,m_rx,m_ry,m_buttons)      Joystick.send_16_16_12_12_12_28(m_x,m_y,m_z,m_rx,m_ry,m_buttons) // milos, ver4
-//#define SendInputReport(m_x,m_y,m_z,m_rx,m_ry,m_rz,m_buttons)      Joystick.send_16_16_12_12_12_12_32(m_x,m_y,m_z,m_rx,m_ry,m_rz,m_buttons) // milos, ver5
 
 #endif
 

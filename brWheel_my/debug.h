@@ -30,17 +30,8 @@
 #ifndef _DEBUG_H_
 #define _DEBUG_H_
 
-/*// Method of debugging
-  extern const u8 DEBUG_TO_NONE;
-  extern const u8 DEBUG_TO_UART;
-  extern const u8 DEBUG_TO_USB;
-  extern const u8 DEBUG_DETAIL;
-*/
-extern volatile u8 gDebugMode;
-
-// Returns true if debug settings contain all of the given attributes
-// (see above constants DEBUG_xxx).
-b8 DoDebug(const u8 type);
+// dustin's rig, removed - gDebugMode/DoDebug and the old debug-target constants:
+// nothing ever read them (all Log* bodies compile out unless DEBUG_FFB is defined).
 
 // If below are defined, code for respective debug target is included into build
 #define DEBUG_ENABLE_UART
@@ -64,16 +55,6 @@ void LogTextLfP(const char *text);	// From program memory, adds linefeed
 void LogBinary(const void *data, uint16_t len);
 void LogBinaryLf(const void *data, uint16_t len);	// Adds linefeed
 
-// Send out data with a prefix of text and an integer
-void LogData(const char *text, u8 reportId, const void *data, uint16_t len);
-void LogDataLf(const char *text, u8 reportId, const void *data, uint16_t len);	// Adds linefeed
-
-// Log all reports found in the given data (may have one or more)
-// The <text> must point to string in program memory.
-void LogReport(const char *text, const uint16_t *reportSizeArray, u8 *data, uint16_t len);
-
-// Debugging utils for USB-serial debugging
-void FlushDebugBuffer(void);
 
 #define DEBUG_SERIAL		Serial
 #define CONFIG_SERIAL		Serial
