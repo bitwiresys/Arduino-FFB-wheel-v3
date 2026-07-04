@@ -22,6 +22,7 @@ chfxnr
 chtx
 cx
 dkx
+dw
 dwv
 dwxn
 dx
