@@ -31,6 +31,10 @@
 Joystick_ Joystick;
 
 //================================================================================
+#define ADD_JOYSTICK // dustin's rig, fixed - accidentally dropped in the Mouse/Keyboard/RawHID
+// cleanup above; the whole descriptor block below is still wrapped in #ifdef ADD_JOYSTICK,
+// so without this define the joystick HID report descriptor compiled out to nothing (empty
+// report descriptor -> Windows/games see the CDC port but never enumerate the HID gamepad).
 
 extern const u8 _hidReportDescriptor[] PROGMEM;
 const u8 _hidReportDescriptor[] =
