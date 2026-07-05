@@ -117,6 +117,20 @@ uint8_t mcusrMirror = 0;
 u32 lastLoopMicros = 0;
 u32 maxLoopGapUs = 0;
 
+// dustin's rig, added - see the wdt_reset() call in loop() for why this exists: our own
+// hardware watchdog (added to catch i2C freezes) was silently defeating the standard Arduino
+// 1200-baud "touch reset" that GUI tools/arduino-cli use to jump into the bootloader for
+// firmware updates. That mechanism works by having the USB core's CDC handler temporarily
+// reprogram the watchdog to a much shorter timeout (WDTO_120MS) when the host closes the port
+// at 1200 baud, so the chip reboots into the bootloader ~120ms later - but wdt_reset() only
+// restarts the countdown, it does not change the configured period, so our own once-every-2ms
+// "petting" kept re-arming that same short timer forever and it could never actually expire.
+// WDT_TIMEOUT_MASK covers the enable bit (WDE) plus all four prescaler bits (WDP3:0) - the
+// parts of WDTCSR that identify "what timeout is currently configured", ignoring the two
+// interrupt-related bits (WDIF/WDIE) which aren't relevant here.
+#define WDT_TIMEOUT_MASK ((1 << WDE) | (1 << WDP3) | (1 << WDP2) | (1 << WDP1) | (1 << WDP0))
+uint8_t ourWdtcsr = 0; // snapshot of WDTCSR right after our own wdt_enable(WDTO_1S) in setup()
+
 uint16_t dz, bdz; // milos
 uint8_t last_LC_scaling; //milos
 //----------------------------------------- Options -------------------------------------------------------
@@ -403,6 +417,7 @@ void setup() {
   // 1s gives ~500x headroom over the ~2ms control period under normal operation, so it
   // won't fire during legitimate use - only when something genuinely hangs.
   wdt_enable(WDTO_1S);
+  ourWdtcsr = WDTCSR & WDT_TIMEOUT_MASK; // dustin's rig, added - baseline to detect the CDC touch-reset shortening this later, see loop()
 }
 
 //--------------------------------------------------------------------------------------------------------
@@ -420,7 +435,24 @@ void loop() {
     if (lastLoopMicros != 0 && gapUs > maxLoopGapUs) maxLoopGapUs = gapUs;
     lastLoopMicros = nowLoopUs;
   }
-  wdt_reset(); // dustin's rig, added - must run every iteration, see setup() for why
+  // dustin's rig, added - fixed: don't blindly pet the watchdog every iteration anymore (see
+  // ourWdtcsr comment above for why). If something reprogrammed WDTCSR to a shorter timeout
+  // than ours (the CDC 1200-baud touch-reset sequence, mid countdown to jump into the
+  // bootloader), stand down immediately and skip the rest of this loop() iteration entirely -
+  // no work, no wdt_reset() - so the shortened watchdog is free to actually expire and reset
+  // the chip into the bootloader as intended.
+  if (!bit_is_set(WDTCSR, WDE)) {
+    // watchdog got fully disabled - either CDC.cpp's own "DTR went back high, cancel" path
+    // (a spurious touch that wasn't really meant to trigger an update) or something else
+    // entirely turned it off. Either way the board is currently unprotected against a hang;
+    // restore our own protection right away instead of silently running unguarded forever.
+    wdt_enable(WDTO_1S);
+    ourWdtcsr = WDTCSR & WDT_TIMEOUT_MASK;
+  } else if ((WDTCSR & WDT_TIMEOUT_MASK) != ourWdtcsr) {
+    return; // a bootloader-entry countdown is in progress - let it run down, don't touch it
+  } else {
+    wdt_reset(); // dustin's rig, added - must run every iteration, see setup() for why
+  }
 #ifdef AVG_INPUTS //milos, added option see config.h
   if (asc < avgSamples) {
     ReadAnalogInputs(); // milos, get readings for averaging (only do it until we get all samples)
