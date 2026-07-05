@@ -98,7 +98,7 @@ typedef struct
   int16_t	negativeCoefficient;	// -32768..32767 (physical -32768..32767) // dustin's rig, added - now a real wire field (descriptor updated in HID.cpp), was declared here but never sent/read
   int16_t positiveSaturation;	// 0..32767 (physical 0..32767) // dustin's rig, fixed - the descriptor already sent this field; this struct just never declared it, so deadBand below silently read the wrong byte (positiveSaturation's low byte) instead
   int16_t negativeSaturation;	// 0..32767 (physical 0..32767) // dustin's rig, added
-  uint8_t deadBand;	// 0..255 (physical 0..32767) //milos, was 0(0)..255(10000)
+  int16_t deadBand;	// 0..32767 (physical 0..32767) // dustin's rig, widened from 8-bit(0..255) - every other field in this report is 16-bit; vJoy (a common FFB compatibility reference) also sends Dead Band as 16-bit, and some stricter PID consumers assume a uniform field width across the whole Condition block rather than re-reading each field's declared size
 } USB_FFBReport_SetCondition_Output_Data_t;
 
 typedef struct
@@ -261,7 +261,8 @@ typedef struct
   u8 state;	// see constants MEffectState_*
   u8 type;	// see constants USB_EFFECT_*
   u8 parameterBlockOffset; // milos, added
-  u8 attackLevel, fadeLevel, deadBand, enableAxis; //milos, added deadBand and enableAxis
+  u8 attackLevel, fadeLevel, enableAxis; //milos, added deadBand and enableAxis
+  u16 deadBand; // dustin's rig, widened from u8 - see USB_FFBReport_SetCondition_Output_Data_t in ffb.h
   s8 rampStart, rampEnd; //milos, added
   u16 gain, period, direction; // samplingPeriod;	// ms //milos, changed gain from u8 to u16, added samplingPeriod
   u16 duration, fadeTime, attackTime, startDelay; //milos, added attackTime and startDelay
@@ -270,7 +271,7 @@ typedef struct
   s16 offset;
   u8 phase; //milos, changed back to u8 from u16
 #ifdef USE_TWOFFBAXIS // milos, added - used for conditional block effects for yFFB axis
-  u8 deadBand2;
+  u16 deadBand2; // dustin's rig, widened from u8 - see deadBand above
   s16 magnitude2, offset2;
 #endif // end of 2 ffb axis
 } TEffectState;

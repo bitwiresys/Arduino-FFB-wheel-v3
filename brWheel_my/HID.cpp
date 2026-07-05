@@ -414,10 +414,16 @@ const u8 _hidReportDescriptor[] =
   0x91, 0x02,	// OUTPUT (Data,Var,Abs)
   0x09, 0x65,	// USAGE (Dead Band ) //milos, uncommented
   0x15, 0x00,  // LOGICAL_MINIMUM (00) //milos
-  0x26, 0xFF, 0x00, // LOGICAL_MAXIMUM (255) //milos
-  //0x46, 0x10, 0x27,  // PHYSICAL_MAXIMUM (10000)
+  // dustin's rig, widened from 8-bit (0..255) to 16-bit (0..32767) - every other field in this
+  // report (CP Offset, Coefficients, Saturation) is 16-bit; Dead Band being the odd one out at
+  // 8 bits is a real divergence from common reference implementations (e.g. vJoy sends Dead
+  // Band as 16-bit too) that a PID consumer assuming a uniform field width across the whole
+  // Condition block could choke on, silently failing Spring/Damper/Inertia/Friction entirely
+  // while simpler effects (Constant Force etc, no Condition report needed) keep working fine -
+  // matching a "device is seen, but no FFB" symptom from some games.
+  0x26, 0xFF, 0x7F, // LOGICAL_MAXIMUM (32767)
   0x46, 0xFF, 0x7F,  // PHYSICAL_MAXIMUM (32767) //milos
-  0x75, 0x08, // REPORT_SIZE (08) //milos
+  0x75, 0x10, // REPORT_SIZE (16)
   0x95, 0x01,	// REPORT_COUNT (01) //milos, uncommented
   0x91, 0x02,	// OUTPUT (Data,Var,Abs) //milos, uncommented
   0xC0,	// END COLLECTION ()

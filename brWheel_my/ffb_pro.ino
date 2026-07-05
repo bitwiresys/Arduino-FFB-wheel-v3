@@ -320,6 +320,14 @@ static s16 DesktopMag (u8 gain) { // dustin's rig, added - magnitude of a user d
 // Returns false (effect contributes nothing) if inside the dead band; otherwise fills
 // *outMetric with the dead-band-adjusted metric (same sign as metricNoOffset) and *outCoeff
 // with the direction-appropriate raw coefficient to scale it by.
+// dustin's rig, added - deadBand used to be an 8-bit wire value (0..255 representing physical
+// 0..32767, ~128.5 physical units per step); it's now a full 16-bit field (see ffb.h/HID.cpp)
+// so the SAME per-effect multipliers below (milos's originals: *8, /32, /640) would make the
+// dead band ~128.5x too wide for any given physical intent from the host. This factor corrects
+// for that so the real-world dead band width a game requests is unchanged by the wire format
+// getting finer-grained.
+const f32 DEADBAND_RESCALE = 255.0 / 32767.0;
+
 static bool ConditionDeadband(volatile TEffectState &ef, f32 metricNoOffset, f32 dbWidth, f32 *outMetric, s16 *outCoeff) {
   if (fabs(metricNoOffset) <= dbWidth) return false;
   bool positive = metricNoOffset >= 0;
@@ -392,7 +400,7 @@ s32v cFFB::CalcTorqueCommands (s32v *pos) { // milos, pointer struct agument, re
           ef.fadeLevel has range 0..255 8bit logical, 0-32767 physical
           ef.rampStart has range -127..127 8bit logical, -32767 to 32767 physical
           ef.rampEnd has range -127..127 8bit logical, -32767 to 32767 physical
-          ef.deadBand has range 0..255 8bit logical, 0 to 32767 physical
+          ef.deadBand has range 0..32767 16bit logical (the same physical) // dustin's rig, widened from 8bit
           ef.direction has range 0..32767 16bit logical, 0 to 35999 physical, exp -2, unit deg
         */
 
@@ -460,7 +468,7 @@ s32v cFFB::CalcTorqueCommands (s32v *pos) { // milos, pointer struct agument, re
             case USB_EFFECT_SPRING: { // dustin's rig, changed - dead band + direction-dependent coefficient (see ConditionDeadband above)
                 f32 posNoOffset = pos->x - (s16)((s32(ef.offset) * ROTATION_MID) >> 15); //milos, for spring, damper, inertia and friction forces ef.offset is cpOffset, here we scale it to ROTATION_MID
                 f32 dbMetric; s16 coeff;
-                if (ConditionDeadband(ef, posNoOffset, (f32)ef.deadBand * 8.0, &dbMetric, &coeff)) { // milos's own dead-band scale for this effect (*8), from the pre-optimization reference implementation
+                if (ConditionDeadband(ef, posNoOffset, (f32)ef.deadBand * DEADBAND_RESCALE * 8.0, &dbMetric, &coeff)) { // milos's own dead-band scale for this effect (*8), from the pre-optimization reference implementation, rescaled for the wider wire field (see DEADBAND_RESCALE)
                   s32 springMag = ScaleMagnitude(coeff, ef.gain, EffectDivider());
                   command.x += SpringEffect((s32)dbMetric, springMag * configSpringGain / 100 / 16);
                 }
@@ -473,7 +481,7 @@ s32v cFFB::CalcTorqueCommands (s32v *pos) { // milos, pointer struct agument, re
             case USB_EFFECT_DAMPER: { // dustin's rig, changed - dead band + direction-dependent coefficient
                 f32 spdNoOffset = spd - (f32)ef.offset / 1638.3; //milos, here we scale it to speed
                 f32 dbMetric; s16 coeff;
-                if (ConditionDeadband(ef, spdNoOffset, (f32)ef.deadBand / 32.0, &dbMetric, &coeff)) {
+                if (ConditionDeadband(ef, spdNoOffset, (f32)ef.deadBand * DEADBAND_RESCALE / 32.0, &dbMetric, &coeff)) {
                   s32 damperMag = ScaleMagnitude(coeff, ef.gain, EffectDivider());
                   command.x += DamperEffect(dbMetric, damperMag * configDamperGain / 100);
                 }
@@ -483,7 +491,7 @@ s32v cFFB::CalcTorqueCommands (s32v *pos) { // milos, pointer struct agument, re
             case USB_EFFECT_INERTIA: { // dustin's rig, changed - dead band + direction-dependent coefficient
                 f32 aclNoOffset = acl - (f32)ef.offset / 32767.0; //milos, here we scale it to acceleration
                 f32 dbMetric; s16 coeff;
-                if (ConditionDeadband(ef, aclNoOffset, (f32)ef.deadBand / 640.0, &dbMetric, &coeff)) {
+                if (ConditionDeadband(ef, aclNoOffset, (f32)ef.deadBand * DEADBAND_RESCALE / 640.0, &dbMetric, &coeff)) {
                   s32 inertiaMag = ScaleMagnitude(coeff, ef.gain, EffectDivider());
                   command.x += InertiaEffect(dbMetric, inertiaMag * configInertiaGain / 100);
                 }
@@ -493,7 +501,7 @@ s32v cFFB::CalcTorqueCommands (s32v *pos) { // milos, pointer struct agument, re
             case USB_EFFECT_FRICTION: { // dustin's rig, changed - dead band + direction-dependent coefficient
                 f32 spdNoOffset = spd - (f32)ef.offset / 1638.3;
                 f32 dbMetric; s16 coeff;
-                if (ConditionDeadband(ef, spdNoOffset, (f32)ef.deadBand / 32.0, &dbMetric, &coeff)) {
+                if (ConditionDeadband(ef, spdNoOffset, (f32)ef.deadBand * DEADBAND_RESCALE / 32.0, &dbMetric, &coeff)) {
                   s32 frictionMag = ScaleMagnitude(coeff, ef.gain, EffectDivider());
                   command.x += FrictionEffect(dbMetric, frictionMag * configFrictionGain / 100);
                 }
@@ -770,12 +778,12 @@ void FfbproSetCondition (USB_FFBReport_SetCondition_Output_Data_t* data, volatil
     effect->positiveSaturation = (s16)data->positiveSaturation;
     effect->negativeSaturation = (s16)data->negativeSaturation;
     effect->offset = (s16)data->cpOffset; // milos, this offset changes X-pos
-    effect->deadBand = (u8)data->deadBand; // milos, added
+    effect->deadBand = (u16)data->deadBand; // milos, added // dustin's rig, widened to u16 - see ffb.h
   } else if (effect->parameterBlockOffset == 1) { // milos, condition block for yFFB
 #ifdef USE_TWOFFBAXIS
     effect->magnitude2 = (s16)data->positiveCoefficient; // milos, added  - yFFB spring constant (kept symmetric - see CalcTorqueCommands)
     effect->offset2 = (s16)data->cpOffset; // milos, this offset changes yFFB
-    effect->deadBand2 = (u8)data->deadBand; // milos, added for yFFB
+    effect->deadBand2 = (u16)data->deadBand; // milos, added for yFFB // dustin's rig, widened to u16
 #endif // end of 2 ffb axis
   }
 }
