@@ -95,9 +95,9 @@ typedef struct
   uint8_t	parameterBlockOffset;	// bits: 0..3=parameterBlockOffset, 4..5=instance1, 6..7=instance2
   int16_t cpOffset;	// -32768..32767 (physical -32768..32767) //milos, was -128(-10000)..127(10000), int8_t
   int16_t	positiveCoefficient;	// -32767..32767 (physical -32767..32767) //milos, was -128(-10000)..127(10000), int8_t
-  //  int16_t	negativeCoefficient;	// -32768..32767 (physical -32768..32767) //milos, was -128(-10000)..127(10000), int8_t, commented out
-  //  int16_t positiveSaturation;	// 0..32767 (physical 0..32767) //milos, was 0(0)..255(10000), int8_t, commented out
-  //  uint8_t	negativeSaturation;	// -128..127
+  int16_t	negativeCoefficient;	// -32768..32767 (physical -32768..32767) // dustin's rig, added - now a real wire field (descriptor updated in HID.cpp), was declared here but never sent/read
+  int16_t positiveSaturation;	// 0..32767 (physical 0..32767) // dustin's rig, fixed - the descriptor already sent this field; this struct just never declared it, so deadBand below silently read the wrong byte (positiveSaturation's low byte) instead
+  int16_t negativeSaturation;	// 0..32767 (physical 0..32767) // dustin's rig, added
   uint8_t deadBand;	// 0..255 (physical 0..32767) //milos, was 0(0)..255(10000)
 } USB_FFBReport_SetCondition_Output_Data_t;
 
@@ -265,7 +265,8 @@ typedef struct
   s8 rampStart, rampEnd; //milos, added
   u16 gain, period, direction; // samplingPeriod;	// ms //milos, changed gain from u8 to u16, added samplingPeriod
   u16 duration, fadeTime, attackTime, startDelay; //milos, added attackTime and startDelay
-  s16 magnitude, positiveCoefficient;  //milos, added positiveCoefficient
+  s16 magnitude, positiveCoefficient;  //milos, added positiveCoefficient (now actually used - see FfbproSetCondition)
+  s16 negativeCoefficient, positiveSaturation, negativeSaturation; // dustin's rig, added - full HID PID Condition report support (deadBand already existed above)
   s16 offset;
   u8 phase; //milos, changed back to u8 from u16
 #ifdef USE_TWOFFBAXIS // milos, added - used for conditional block effects for yFFB axis
