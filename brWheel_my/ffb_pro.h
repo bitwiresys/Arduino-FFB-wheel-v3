@@ -7,7 +7,7 @@
 
 const s32 SPD_THRESHOLD	= 0; //8
 const s32 ACL_THRESHOLD = 0; //milos, added
-const s32 FRC_THRESHOLD = 1; //milos, added - friction treshold
+const s32 FRC_THRESHOLD = 6; //milos, added - friction treshold // dustin's rig, widened from 1 - this is now the sinusoidal rampup zone's half-width (see FrictionEffect in ffb_pro.ino); 1 made the rampup an near-instant step (a couple of raw encoder counts), giving friction a harsh/gritty catch right at zero speed. Tune to taste - larger = smoother/softer near center, smaller = crisper/grippier.
 
 #define ADC_NB_BITS		10
 #define VAL_NB_BITS		16

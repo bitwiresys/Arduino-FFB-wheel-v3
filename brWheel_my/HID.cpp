@@ -385,12 +385,17 @@ const u8 _hidReportDescriptor[] =
   0x95, 0x01,	// REPORT_COUNT (01)
   0x91, 0x02,	// OUTPUT (Data,Var,Abs)
   0x09, 0x61, // USAGE (Positive Coefficient)
-  //   0x09,0x62,  // USAGE (Negative Coefficient)
   //0x36, 0xF0, 0xD8,	// PHYSICAL_MINIMUM (-10000)
   0x36, 0x00, 0x80,  // PHYSICAL_MINIMUM (-32768) //milos
   //0x46, 0x10, 0x27,  // PHYSICAL_MAXIMUM (10000)
   0x46, 0xFF, 0x7F,  // PHYSICAL_MAXIMUM (32767) //milos
-  0x95, 0x01,	// REPORT_COUNT (01)	// ???? WAS 2 with "negative coeff"
+  0x95, 0x01,	// REPORT_COUNT (01)
+  0x91, 0x02,	// OUTPUT (Data,Var,Abs)
+  // dustin's rig, added - Negative Coefficient is now a real wire field (was declared in the
+  // struct but never sent - only positiveCoefficient was ever used, in both directions).
+  // Same LOGICAL/PHYSICAL_MIN/MAX still active from Positive Coefficient above (unchanged).
+  0x09, 0x62,	// USAGE (Negative Coefficient)
+  0x95, 0x01,	// REPORT_COUNT (01)
   0x91, 0x02,	// OUTPUT (Data,Var,Abs)
   0x15, 0x00,	// LOGICAL_MINIMUM (00)
   //0x26, 0xFF, 0x00,	// LOGICAL_MAXIMUM (255)
@@ -399,9 +404,13 @@ const u8 _hidReportDescriptor[] =
   //0x46, 0x10, 0x27,  // PHYSICAL_MAXIMUM (10000)
   0x46, 0xFF, 0x7F,  // PHYSICAL_MAXIMUM (32767) //milos
   0x09, 0x63,	// USAGE (Positive Saturation) //milos, uncommented
-  //  0x09, 0x64,	// USAGE (Negative Saturation)
   0x75, 0x10,	// REPORT_SIZE (16) //milos
   0x95, 0x01,	// REPORT_COUNT (01) //milos, uncommented
+  0x91, 0x02,	// OUTPUT (Data,Var,Abs)
+  // dustin's rig, added - Negative Saturation, same LOGICAL/PHYSICAL_MIN/MAX still active
+  // from Positive Saturation above (0..32767, unchanged)
+  0x09, 0x64,	// USAGE (Negative Saturation)
+  0x95, 0x01,	// REPORT_COUNT (01)
   0x91, 0x02,	// OUTPUT (Data,Var,Abs)
   0x09, 0x65,	// USAGE (Dead Band ) //milos, uncommented
   0x15, 0x00,  // LOGICAL_MINIMUM (00) //milos

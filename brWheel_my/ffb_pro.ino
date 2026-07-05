@@ -43,6 +43,22 @@ const s32 AUTO_CENTER_SPRING = 512; //milos, modified
 const s32 BOUNDARY_SPRING	=	 32767; //milos, modified
 //#define BOUNDARY_FRICTION		32 //milos, commented
 
+// dustin's rig, added - reserve headroom for the end-stop spring below other effects (game +
+// desktop), so a hard hit against the wall is never swallowed by the final torque clamp when
+// the game is already driving near-max force (heavy cornering/impact - exactly when the wall
+// needs to be felt most). All non-endstop torque is scaled down to this fraction before the
+// endstop spring is added on top, which then has its own guaranteed headroom up to the clamp.
+// Same idea as OpenFFBoard's per-axis "fx_ratio" (default ~80%, see Axis.h upstream).
+const f32 EFFECT_HEADROOM_RATIO = 0.8;
+
+// dustin's rig, added - extra damping active only inside the end-stop zone (FFBeast calls this
+// "soft stop dampening"): cuts the bounce/oscillation ("clunk") from slamming into the end of
+// travel at speed, without adding any damping in the normal range of motion. Scaled down from
+// the desktop damper's full strength and tied to the existing end-stop gain knob (configStopGain)
+// so there's no new EEPROM parameter to add - a stiffer end-stop also gets proportionally more
+// of this damping.
+const f32 ENDSTOP_DAMPER_SCALE = 0.25;
+
 //const f32 gSpeedSet = 0.1f;             //milos, commented
 //const f32 gSpringSet = 0.05f; // 0.005  //milos, commented
 
@@ -159,11 +175,20 @@ s16 FrictionEffect (f32 spd, s16 mag) { //milos, modified
   //milos, simplified friction force model (constant above treshold, otherwise linear)
   //milos, speed in the units of wheel_angle/time_step
   s16 cmd = mag * FRICTION_COEF / 32;
-  if (spd * wDegScl() * 10 > FRC_THRESHOLD)
+  f32 scaledSpd = spd * wDegScl() * 10;
+  if (scaledSpd > FRC_THRESHOLD)
     return (-ConstrainEffect(cmd));
-  if (spd * wDegScl() * 10 < -FRC_THRESHOLD)
+  if (scaledSpd < -FRC_THRESHOLD)
     return (ConstrainEffect(cmd));
-  return (-ConstrainEffect(spd * cmd * wDegScl() * 10 / FRC_THRESHOLD));
+  // dustin's rig, changed - smooth sinusoidal ease-in across the rampup zone instead of a
+  // linear ramp (same shape, continuous with the two branches above at +-FRC_THRESHOLD: sin
+  // reaches +-1 exactly at the boundary, so there's no discontinuity). Widening FRC_THRESHOLD
+  // (see ffb_pro.h) softens the harsh, gritty "catch" friction can have right as the wheel
+  // passes through zero speed / changes direction. Same technique as OpenFFBoard's friction
+  // rampup (EffectsCalculator.cpp), re-derived here for our units.
+  f32 phase = TWO_PI * (fabs(scaledSpd) / FRC_THRESHOLD / 2.0 - 0.25); // -TWO_PI/4 at zero speed .. +TWO_PI/4 at the boundary
+  f32 rampupFactor = (1.0 + sin(phase)) / 2.0; // 0 at zero speed, 1 at the boundary
+  return (s16)(-ConstrainEffect(cmd) * rampupFactor * (scaledSpd >= 0 ? 1 : -1));
 }
 
 s32 SpringEffect (s32 err, s16 mag) { //milos, modified - normalized to wheel angle
@@ -282,6 +307,27 @@ static s16 DesktopMag (u8 gain) { // dustin's rig, added - magnitude of a user d
   return ScaleMagnitude((u16)gain * 327, 32767, EffectDivider());
 }
 
+// dustin's rig, added - full HID PID "Condition" report support: dead band around cpOffset plus
+// a direction-dependent coefficient (spring/damper/inertia/friction can be stiffer pushing one
+// way than the other - real sims send this for asymmetric wall/curb forces). Previously only
+// ef.positiveCoefficient's raw value was ever used regardless of direction, and deadBand/offset
+// were parsed but never applied (the dead-band math below matches milos's own original,
+// commented-out reference implementation for each effect type - see git history).
+//
+// metricNoOffset: the metric (position/speed/accel) with cpOffset already subtracted by the
+// caller, in whatever unit that effect type already used before this change.
+// dbWidth: dead band half-width in the SAME units as metricNoOffset.
+// Returns false (effect contributes nothing) if inside the dead band; otherwise fills
+// *outMetric with the dead-band-adjusted metric (same sign as metricNoOffset) and *outCoeff
+// with the direction-appropriate raw coefficient to scale it by.
+static bool ConditionDeadband(volatile TEffectState &ef, f32 metricNoOffset, f32 dbWidth, f32 *outMetric, s16 *outCoeff) {
+  if (fabs(metricNoOffset) <= dbWidth) return false;
+  bool positive = metricNoOffset >= 0;
+  *outMetric = metricNoOffset - (positive ? dbWidth : -dbWidth);
+  *outCoeff = positive ? ef.positiveCoefficient : ef.negativeCoefficient;
+  return true;
+}
+
 //--------------------------------------------------------------------------------------------------------
 
 void SetIndex () {
@@ -353,9 +399,8 @@ s32v cFFB::CalcTorqueCommands (s32v *pos) { // milos, pointer struct agument, re
         volatile TEffectState &ef = gEffectStates[id];
         if (Btest(ef.state, MEffectState_Allocated | MEffectState_Playing)) {
 
-          s32 mag = ScaleMagnitude(ef.magnitude, ef.gain, EffectDivider()); // milos, effects are scaled equaly for all PWM modes
 #ifdef USE_TWOFFBAXIS
-          s32 mag2 = ScaleMagnitude(ef.magnitude2, ef.gain, EffectDivider()); // milos, magnitude for yFFB
+          s32 mag2 = ScaleMagnitude(ef.magnitude2, ef.gain, EffectDivider()); // milos, magnitude for yFFB (y-axis kept symmetric, see USB_EFFECT_SPRING below)
 #endif // end of 2 ffb axis
 
           if (ef.period <= (CONTROL_PERIOD / 1000) * 2) { //milos, make sure to cap the max frequency (or to limit min period)
@@ -412,27 +457,47 @@ s32v cFFB::CalcTorqueCommands (s32v *pos) { // milos, pointer struct agument, re
               command.x += PeriodicForce(ef, SawtoothDownEffect(EnvelopeOf(ef, effectTime[id - 1]), ef.period, ef.phase, effectTime[id - 1])); //milos, added
               //LogTextLf("_pro sawtoothdown");
               break;
-            case USB_EFFECT_SPRING:
-              command.x += SpringEffect(pos->x - (s16)((s32(ef.offset) * ROTATION_MID) >> 15), mag * configSpringGain / 100 / 16); //milos, for spring, damper, inertia and friction forces ef.offset is cpOffset, here we scale it to ROTATION_MID
+            case USB_EFFECT_SPRING: { // dustin's rig, changed - dead band + direction-dependent coefficient (see ConditionDeadband above)
+                f32 posNoOffset = pos->x - (s16)((s32(ef.offset) * ROTATION_MID) >> 15); //milos, for spring, damper, inertia and friction forces ef.offset is cpOffset, here we scale it to ROTATION_MID
+                f32 dbMetric; s16 coeff;
+                if (ConditionDeadband(ef, posNoOffset, (f32)ef.deadBand * 8.0, &dbMetric, &coeff)) { // milos's own dead-band scale for this effect (*8), from the pre-optimization reference implementation
+                  s32 springMag = ScaleMagnitude(coeff, ef.gain, EffectDivider());
+                  command.x += SpringEffect((s32)dbMetric, springMag * configSpringGain / 100 / 16);
+                }
+              }
 #ifdef USE_TWOFFBAXIS
-              command.y += SpringEffect(pos->y - (s16)((s32(ef.offset2) * ROTATION_MID) >> 15), mag2 * configSpringGain / 100 / 16); //milos, for yFFB spring
+              command.y += SpringEffect(pos->y - (s16)((s32(ef.offset2) * ROTATION_MID) >> 15), mag2 * configSpringGain / 100 / 16); //milos, for yFFB spring (kept symmetric, no dead band/negative coefficient wiring for y - USE_TWOFFBAXIS isn't used in any shipped variant)
 #endif // end of 2 ffb axis
-              
               //LogTextLf("_pro spring");
               break;
-            case USB_EFFECT_DAMPER:
-              command.x += DamperEffect(spd - (f32)ef.offset / 1638.3, mag * configDamperGain / 100) ; //milos, here we scale it to speed
-              
+            case USB_EFFECT_DAMPER: { // dustin's rig, changed - dead band + direction-dependent coefficient
+                f32 spdNoOffset = spd - (f32)ef.offset / 1638.3; //milos, here we scale it to speed
+                f32 dbMetric; s16 coeff;
+                if (ConditionDeadband(ef, spdNoOffset, (f32)ef.deadBand / 32.0, &dbMetric, &coeff)) {
+                  s32 damperMag = ScaleMagnitude(coeff, ef.gain, EffectDivider());
+                  command.x += DamperEffect(dbMetric, damperMag * configDamperGain / 100);
+                }
+              }
               //LogTextLf("_pro damper");
               break;
-            case USB_EFFECT_INERTIA:
-              command.x += InertiaEffect(acl - (f32)ef.offset / 32767.0, mag * configInertiaGain / 100); //milos, here we scale it to acceleration
-              
+            case USB_EFFECT_INERTIA: { // dustin's rig, changed - dead band + direction-dependent coefficient
+                f32 aclNoOffset = acl - (f32)ef.offset / 32767.0; //milos, here we scale it to acceleration
+                f32 dbMetric; s16 coeff;
+                if (ConditionDeadband(ef, aclNoOffset, (f32)ef.deadBand / 640.0, &dbMetric, &coeff)) {
+                  s32 inertiaMag = ScaleMagnitude(coeff, ef.gain, EffectDivider());
+                  command.x += InertiaEffect(dbMetric, inertiaMag * configInertiaGain / 100);
+                }
+              }
               //LogTextLf("_pro inertia");
               break;
-            case USB_EFFECT_FRICTION:
-              command.x += FrictionEffect(spd - (f32)ef.offset / 1638.3, mag * configFrictionGain / 100);
-              
+            case USB_EFFECT_FRICTION: { // dustin's rig, changed - dead band + direction-dependent coefficient
+                f32 spdNoOffset = spd - (f32)ef.offset / 1638.3;
+                f32 dbMetric; s16 coeff;
+                if (ConditionDeadband(ef, spdNoOffset, (f32)ef.deadBand / 32.0, &dbMetric, &coeff)) {
+                  s32 frictionMag = ScaleMagnitude(coeff, ef.gain, EffectDivider());
+                  command.x += FrictionEffect(dbMetric, frictionMag * configFrictionGain / 100);
+                }
+              }
               //LogTextLf("_pro friction");
               break;
             //case USB_EFFECT_CUSTOM: //milos, commented
@@ -453,6 +518,13 @@ s32v cFFB::CalcTorqueCommands (s32v *pos) { // milos, pointer struct agument, re
     if (bitRead(effstate, 2)) command.x += InertiaEffect(acl, DesktopMag(configInertiaGain)) ; //milos, added - user inertia effect
     if (bitRead(effstate, 3)) command.x += FrictionEffect(spd, DesktopMag(configFrictionGain)) ; //milos, added - user friction effect
 
+    // dustin's rig, added - reserve end-stop headroom (see EFFECT_HEADROOM_RATIO above). Must
+    // run after every game/desktop contribution above and before the end-stop spring below.
+    command.x *= EFFECT_HEADROOM_RATIO;
+#ifdef USE_TWOFFBAXIS
+    command.y *= EFFECT_HEADROOM_RATIO;
+#endif // end of 2 ffb axis
+
     s32 limit = ROTATION_MID; // milos, +-ROTATION_MID distance from center is where endstop spring force will start
     //if ((pos->x < -limit) || (pos->x > limit)) {
 #ifdef USE_ANALOGFFBAXIS
@@ -469,6 +541,7 @@ s32v cFFB::CalcTorqueCommands (s32v *pos) { // milos, pointer struct agument, re
         pos->x = pos->x + limit; //milos
       }
       command.x += SpringEffect(pos->x, ScaledSpring(BOUNDARY_SPRING, configStopGain)); // milos, boundary spring force is equal (scaled accordingly) for all PWM modes, endstop force for xFFB axis
+      command.x += DamperEffect(spd, (s16)(DesktopMag(configStopGain) * ENDSTOP_DAMPER_SCALE)); // dustin's rig, added - extra damping right at the wall only, see ENDSTOP_DAMPER_SCALE above
     }
     //}
 #ifdef USE_TWOFFBAXIS // milos, add y-axis endstop with yFFB (at the moment y-axis is on the pot only)
@@ -482,6 +555,7 @@ s32v cFFB::CalcTorqueCommands (s32v *pos) { // milos, pointer struct agument, re
         pos->y = pos->y + limit; //milos
       }
       command.y += SpringEffect(pos->y, ScaledSpring(BOUNDARY_SPRING, configStopGain)); //milos, boundary spring force is equal (scaled accordingly) for all PWM modes endstop force for yFFB axis
+      command.y += DamperEffect(spd, (s16)(DesktopMag(configStopGain) * ENDSTOP_DAMPER_SCALE)); // dustin's rig, added - reuses xFFB's spd (no separate y speed observer exists); harmless approximation, this path never compiles in any shipped variant
     }
     // }
 #endif // end of 2 ffb axis
@@ -687,17 +761,23 @@ void FfbproSetCondition (USB_FFBReport_SetCondition_Output_Data_t* data, volatil
   */
   effect->parameterBlockOffset = (u8)data->parameterBlockOffset; // milos, added - pass the effect condition block index
   if (effect->parameterBlockOffset == 0) { // milos, condition block for xFFB
-    effect->magnitude = (s16)data->positiveCoefficient; // milos, postitve coefficient can also be negative
+    // dustin's rig, fixed - store in the dedicated positiveCoefficient field (was aliased onto
+    // magnitude, which is for non-condition effect types); negativeCoefficient/positiveSaturation/
+    // negativeSaturation are now real wire fields too (see the HID.cpp descriptor and ffb.h struct)
+    // and are actually applied in CalcTorqueCommands instead of being parsed and discarded.
+    effect->positiveCoefficient = (s16)data->positiveCoefficient;
+    effect->negativeCoefficient = (s16)data->negativeCoefficient;
+    effect->positiveSaturation = (s16)data->positiveSaturation;
+    effect->negativeSaturation = (s16)data->negativeSaturation;
     effect->offset = (s16)data->cpOffset; // milos, this offset changes X-pos
     effect->deadBand = (u8)data->deadBand; // milos, added
   } else if (effect->parameterBlockOffset == 1) { // milos, condition block for yFFB
 #ifdef USE_TWOFFBAXIS
-    effect->magnitude2 = (s16)data->positiveCoefficient; // milos, added  - yFFB spring constant
+    effect->magnitude2 = (s16)data->positiveCoefficient; // milos, added  - yFFB spring constant (kept symmetric - see CalcTorqueCommands)
     effect->offset2 = (s16)data->cpOffset; // milos, this offset changes yFFB
     effect->deadBand2 = (u8)data->deadBand; // milos, added for yFFB
 #endif // end of 2 ffb axis
   }
-  //effect->positiveSaturation = (s16)data->positiveSaturation; // milos, posititve saturation can also be negative (not used currently)
 }
 
 void FfbproSetPeriodic (USB_FFBReport_SetPeriodic_Output_Data_t* data, volatile TEffectState * effect)
